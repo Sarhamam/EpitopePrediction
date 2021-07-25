@@ -10,6 +10,7 @@ except ImportError:
     NETSURF_AVAILABLE = False
 
 from Bio import SeqIO
+from numpy import char
 from boltons import iterutils
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 
@@ -168,6 +169,22 @@ def calculate_netsurf_properties(sequences, window, netsurf_searcher, netsurf_mo
     # Results in a list of dictionaries, keys: id,desc,seq,n,rsa,asa,phi,psi,disorder, interface, q3, q8
     results = {res['id']: res for res in results}  # This dictionary will have rsa, q3, q8, and q3_prob, q8_prob,phi,psi
     return results
+
+
+def calculate_accuracy(true_str, pred_str):
+    """
+    Calculates the prediction accuracy of a single sequence
+    :param true_str a string representing the true classification (of the format 'aarnCDAArr')
+    :param pred_str a string representing the prediction of the NN (of the format 'aarnCDAArr')
+    Both strings are expected to have the same length
+    """
+    assert len(true_str) == len(pred_str)
+
+    exp = char.array(true_str) # numpy char array
+    pred = char.array(pred_str) # numpy char array
+    corrects = sum(exp == pred)
+
+    return corrects / len(exp)
 
 
 if __name__ == '__main__':
