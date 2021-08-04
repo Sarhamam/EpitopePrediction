@@ -30,6 +30,8 @@ def main(input_file):
     sequence_properties = calculate_properties(sequences=parsed_input, window=3, netsurf_searcher=netsurf_searcher,
                                                netsurf_model=netsurf_model)
 
+    print(sequence_properties["PositiveID_115075"][0].encode())  # just to make sure shit works
+
 
 def init_netsurf_model(path_to_hhblits):
     if not NETSURF_AVAILABLE:
@@ -53,6 +55,9 @@ def read_fasta(input_file):
 
 
 def _calculate_scale(seq, window, scale):
+    if window == 1:
+        return [scale[aa.upper()] for aa in seq]
+
     analyzed_protein = ProteinAnalysis(seq.lower())
     res = analyzed_protein.protein_scale(window=window, param_dict=scale)
     return res
@@ -121,13 +126,17 @@ def calculate_properties(sequences, window, netsurf_searcher, netsurf_model):
                                                    volume=volume[i],
                                                    polarity=polarity[i],
                                                    hydrophobicity=hydrophobicity[i],
-                                                   rsa=netsurf_predictions[seq_name]['rsa'][i:i + 3],
-                                                   q8=netsurf_predictions[seq_name]['q8'][i:i + 3])
+                                                   rsa=netsurf_predictions[seq_name]['rsa'][
+                                                       i:i + window] if NETSURF_AVAILABLE else None,
+                                                   q8=netsurf_predictions[seq_name]['q8'][
+                                                      i:i + window] if NETSURF_AVAILABLE else None)
             preprocessed_sequence.append(aa_group)
 
         # DEBUG
-        assert i + 1 == len(volume) == len(polarity) == len(hydrophobicity)
-        assert i + 3 == len(netsurf_predictions[seq_name]['rsa']) == len(netsurf_predictions[seq_name]['q8'])
+        # assert i + 1 == len(volume) == len(polarity) == len(hydrophobicity)
+        # assert (i + 3 == len(netsurf_predictions[seq_name]['rsa']) == len(
+        #     netsurf_predictions[seq_name]['q8'])) if NETSURF_AVAILABLE else True
+
         result[seq_name] = preprocessed_sequence
         # Important Note : this can be SMALLER than the length of sequence. for example:
         # we can have a sequence of 171 AAs and the result will only contain 169 windows.
@@ -140,11 +149,24 @@ class PreprocessedAminoAcidWindow(object):
     def __init__(self, type, volume, polarity, hydrophobicity, rsa, q8):
         self.q8 = q8
         self.rsa = rsa
-        self.type = type
+        self.type = type  # Tuple
         self.volume = volume
         self.polarity = polarity
         self.size = len(self.type)
         self.hydrophobicity = hydrophobicity
+
+    def encode(self):
+        """
+        Returns a string of "type|hydrophobicity|polarity|volume|rsa|q8|
+        """
+        # Will we want to truncate the numbers so we will have a constant word length? 
+        type_as_str = "".join(self.type)
+        properties_to_encode = [type_as_str, self.hydrophobicity, self.polarity, self.volume]
+        if NETSURF_AVAILABLE:
+            # Encode secondary structure and RSA if available
+            properties_to_encode.extend([self.rsa, self.q8])
+
+        return "|".join([str(p) for p in properties_to_encode])
 
 
 def calculate_netsurf_properties(sequences, window, netsurf_searcher, netsurf_model, outdir=None):
@@ -162,6 +184,7 @@ def calculate_netsurf_properties(sequences, window, netsurf_searcher, netsurf_mo
     if not outdir:
         outdir = "./outdir_netsurf"
     for name in sequences:
+        # Change sequences to uppercase sequences, this is how netsurf works
         sequences[name][1] = sequences[name][1].upper()
 
     profiles = netsurf_searcher(sequences, outdir)
@@ -176,12 +199,12 @@ def calculate_accuracy(true_str, pred_str):
     Calculates the prediction accuracy of a single sequence
     :param true_str a string representing the true classification (of the format 'aarnCDAArr')
     :param pred_str a string representing the prediction of the NN (of the format 'aarnCDAArr')
-    Both strings are expected to have the same length
+    Both strings are expected to have the same length and case-insensitive content
     """
-    assert len(true_str) == len(pred_str)
+    assert len(true_str) == len(pred_str) and true_str.upper() == pred_str.upper()
 
-    exp = char.array(true_str) # numpy char array
-    pred = char.array(pred_str) # numpy char array
+    exp = char.array([c for c in true_str])  # numpy char array
+    pred = char.array([c for c in pred_str])  # numpy char array
     corrects = sum(exp == pred)
 
     return corrects / len(exp)
