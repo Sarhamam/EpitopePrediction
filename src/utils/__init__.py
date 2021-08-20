@@ -12,4 +12,14 @@ config["TRAIN"]["FASTA"] = os.path.join(real_path.parent.parent.parent.absolute(
 config["TRAIN"]["TSV"] = os.path.join(real_path.parent.parent.parent.absolute(), "resources", "test.tsv")
 config["LOGGER"]["FILE"] = os.path.join(real_path.parent.parent.parent.absolute(), "logs", "epitope_prediction.log")
 
-logging.basicConfig(filename=config["LOGGER"]["FILE"], level=config["LOGGER"]["LEVEL"])
+logger = logging.getLogger()
+fhandler = logging.FileHandler(filename=config["LOGGER"]["FILE"], mode='a')
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fhandler.setFormatter(formatter)
+logger.addHandler(fhandler)
+logger.setLevel(config["LOGGER"]["LEVEL"])
+
+logger = logging.getLogger("EpitopePrediction")
+logger.info("="* 40)
+logger.info("Program started")
+logger.info("="* 40)

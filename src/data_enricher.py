@@ -13,7 +13,6 @@ import csv
 from utils import config
 from utils.protein_properties import read_fasta, init_netsurf_model, calculate_properties
 
-
 def data_enricher(output):
     parsed_input = read_fasta(config["TRAIN"]["FASTA"])
     netsurf_searcher, netsurf_model = init_netsurf_model()

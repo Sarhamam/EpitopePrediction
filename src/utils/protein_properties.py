@@ -4,7 +4,7 @@ from utils import config
 from boltons import iterutils
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 try:
     import netsurfp2 as nsp
     import netsurfp2.model as nsp_model
@@ -18,7 +18,6 @@ except ImportError:
 ##################
 # Public functions
 ##################
-
 def read_fasta(input_file):
     """Reads fasta file.
     :return format is a list of dictionaries with key - sequence name and value - a list of [description, sequence]"""
@@ -107,7 +106,7 @@ def calculate_netsurf_properties(sequences, window, netsurf_searcher, netsurf_mo
         sequences[name][1] = sequences[name][1].upper()
 
     profiles = netsurf_searcher(sequences, outdir)
-    results = netsurf_model.predict(profiles, outdir, batch_size=window)
+    results = netsurf_model.predict(profiles, outdir, batch_size=25) # Default batch size for NSP2.
     # Results in a list of dictionaries, keys: id,desc,seq,n,rsa,asa,phi,psi,disorder, interface, q3, q8
     results = {res['id']: res for res in results}  # This dictionary will have rsa, q3, q8, and q3_prob, q8_prob,phi,psi
     logger.debug("NetsurfP properties calculated.")
@@ -189,6 +188,6 @@ class PreprocessedAminoAcidWindow(object):
         properties_to_encode = [self.hydrophobicity, self.polarity, self.volume]
         if NETSURF_AVAILABLE:
             # Encode secondary structure and RSA if available
-            properties_to_encode.extend([self.rsa, self.q8])
+            properties_to_encode.extend([*self.rsa, self.q8])
 
         return type_as_str, tuple(p for p in properties_to_encode)
