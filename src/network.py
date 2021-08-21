@@ -1,108 +1,131 @@
+import json
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
+from torchtext.vocab import build_vocab_from_iterator
+from torch.utils.data import Dataset, DataLoader, random_split
+from torch.nn.utils.rnn import pad_sequence, pad_packed_sequence, pack_padded_sequence
+import torchtext.data
 
+# These should be changed, we use this seed to avoid randomness when debbuging
 torch.manual_seed(1)
-
-# These will usually be more like 32 or 64 dimensional.
-# We will keep them small, so we can see how the weights change as we train.
-EMBEDDING_DIM = 64
-HIDDEN_DIM = 64
-
-class LSTMTagger(nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, vocab_size, tagset_size):
-        super(LSTMTagger, self).__init__()
-        self.hidden_dim = hidden_dim
-
-        self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
-
-        # The LSTM takes word embeddings as inputs, and outputs hidden states
-        # with dimensionality hidden_dim.
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim)
-
-        # The linear layer that maps from hidden state space to tag space
-        self.hidden2tag = nn.Linear(hidden_dim, tagset_size)
-
-    def forward(self, sentence):
-        embeds = self.word_embeddings(sentence)
-        lstm_out, _ = self.lstm(embeds.view(len(sentence), 1, -1))
-        tag_space = self.hidden2tag(lstm_out.view(len(sentence), -1))
-        tag_scores = F.log_softmax(tag_space, dim=1)
-        return tag_scores
-
-def prepare_sequence(seq, to_ix):
-    idxs = [to_ix[w] for w in seq]
-    return torch.tensor(idxs, dtype=torch.long)
+torch.backends.cudnn.deterministic = True
 
 
-word_to_ix = {}
-tag_to_ix = {"Y": 1, "N": 0}  # Assign each tag with a unique index
+class AminoAcidDataset(Dataset):
+    def __init__(self, json_file):
+        with open(json_file) as h:
+            self.data = json.load(h)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[str(idx)]
 
 
-def init_network(sequences, train_seq):
-    training_data = []
-    for key in sequences:
-        sent = [amino_acid.type[0] for amino_acid in sequences[key]]
-        tags = ["Y" if c.isupper() else "N" for c in train_seq[key][1]]
-        sent += ['<PAD>'] * (3000 - len(sent))
-        tags += ['N'] * (3000 - len(tags))
-        training_data.append([sent, tags])
+dataset = AminoAcidDataset("/Users/sarhamam/git/sadna/EpitopePrediction/resources/test.tsv")
+train_test_ratio = 0.7
+train_len = int(len(dataset) * train_test_ratio)
+train_dataset, test_dataset = random_split(dataset, [train_len, len(dataset) - train_len])
 
-    for sent, tags in training_data:
-        for word in sent:
-            if word not in word_to_ix:  # word has not been assigned an index yet
-                word_to_ix[word] = len(word_to_ix)  # Assign each word with a unique index
+PAD_LEN = 2000  # Arbitrary value
 
-    return training_data
+amino_acids_vocab = build_vocab_from_iterator(
+    ['a', 'r', 'n', 'd', 'c', 'q', 'e', 'g', 'h', 'i', 'l', 'k', 'm', 'f', 'p', 's', 't', 'w', 'y', 'v', 'b', 'j', 'z',
+     'x'], specials=['<unk>', '<pad>'])
+amino_acids_vocab.set_default_index(amino_acids_vocab["<unk>"])
 
 
-def init_model(training_data):
-    model = LSTMTagger(EMBEDDING_DIM, HIDDEN_DIM, len(word_to_ix), len(tag_to_ix))
-    loss_function = nn.NLLLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.1)
-    count = 0
-    for epoch in range(25):  # again, normally you would NOT do 300 epochs, it is toy data
-        count +=1
-        print(f"epoch begin {count}")
-        avg_accuracy = 0
-        for sentence, tags in training_data:
-            # Step 1. Remember that Pytorch accumulates gradients.
-            # We need to clear them out before each instance
-            model.zero_grad()
+def collate_fn(batch):
+    """ Returns padded vocabulary mapping tensor"""
+    # Batch is a list of entries
+    # Cartesian product between all of the values in the batch
+    sequence_tensors = []
+    properties_tensors = []
+    tag_tensors = []
+    original_sizes = []
+    for entry in batch:
+        indexed_sequence = amino_acids_vocab.forward(entry['Sequence'])  # Map according to vocabulary
+        original_sizes.append(len(entry["Sequence"]))  # Save original size
+        properties_tensors.append(torch.tensor(entry['Properties']))
+        sequence_tensors.append(torch.tensor(indexed_sequence))
+        tag_tensors.append(torch.tensor(entry['Tags']))
 
-            # Step 2. Get our inputs ready for the network, that is, turn them into
-            # Tensors of word indices.
-            sentence_in = prepare_sequence(sentence, word_to_ix)
-            targets = prepare_sequence(tags, tag_to_ix)
+    # Pad batch to minimum size possible
+    padded_properties = pad_sequence(properties_tensors, padding_value=-1)
+    padded_sequences = pad_sequence(sequence_tensors, padding_value=1)  # <pad> token is index 1 in vocabulary
+    padded_tags = pad_sequence(tag_tensors, padding_value=-1)
 
-            # Step 3. Run our forward pass.
-            tag_scores = model(sentence_in)
-            if count == 49:
-                accuracy = 0
-                c = 0
-                for i in range(len(tag_scores)):
-                    if sentence[i] == "<PAD>":
-                        continue
+    result = {
+        "Sequence": padded_sequences,
+        "Properties": padded_properties,
+        "Tags": padded_tags,
+        "Original-Size": original_sizes
+    }
 
-                    accuracy += bool(torch.argmax(tag_scores[i]) == targets[i])
-                    c +=1
+    return result
 
-                accuracy = accuracy / c
-                avg_accuracy += accuracy
-            # Step 4. Compute the loss, gradients, and update the parameters by
-            #  calling optimizer.step()
-            loss = loss_function(tag_scores, targets)
-            loss.backward()
-            optimizer.step()
-        if count == 49:
-            print(f"avg accuracy is {avg_accuracy/len(training_data)}\n")
 
-    # See what the scores are after training
-    with torch.no_grad():
-        inputs = prepare_sequence(training_data[0][0], word_to_ix)
-        tag_scores = model(inputs)
-        print(tag_scores)
-        for idx in range(len(tag_scores)):
-            if torch.argmax(tag_scores[idx]) == 1:
-                print(training_data[0][0][idx])
+dataloader = DataLoader(dataset,
+                        batch_size=2,
+                        shuffle=True,
+                        num_workers=0,
+                        collate_fn=collate_fn)
+
+
+class EpitopePredictor(nn.Module):
+
+    # define all the layers used in model
+    def __init__(self, vocab_size, numeric_feature_dim, hidden_dim, linear_dim, output_dim, n_layers,
+                 bidirectional, dropout):
+        # Constructor
+        super().__init__()
+        # lstm layer
+        self.lstm = nn.LSTM(vocab_size,
+                            hidden_dim,
+                            num_layers=n_layers,
+                            bidirectional=bidirectional,
+                            dropout=dropout,
+                            batch_first=True)
+
+        # dense layer
+        self.dropout = nn.Dropout(0.2)
+        self.linear_1 = nn.Linear(hidden_dim, linear_dim)
+        self.linear_2 = nn.Linear(linear_dim + numeric_feature_dim, output_dim)
+
+        # activation function
+        self.activation = nn.Sigmoid()
+
+    def forward(self, sequences, properties, text_lengths):
+        packed_sequences = pack_padded_sequence(sequences, text_lengths, batch_first=False, enforce_sorted=False)
+        lstm_out, hidden = self.lstm(packed_sequences)
+        lstm_out = lstm_out[-1, :, :]
+        dropout = self.dropout(lstm_out)
+        linear_out = self.linear_1(dropout)
+        # Concate with numeric features:
+        concat_layer = torch.cat((linear_out, properties, 1))
+        linear_2_out = self.linear_2(concat_layer)
+        # Final activation function
+        outputs = self.activation(linear_2_out)
+
+        return outputs
+
+
+size_of_vocab = len(amino_acids_vocab)
+num_hidden_nodes = 32
+num_output_nodes = 2000
+num_layers = 2
+bidirection = True
+dropout = 0.2
+
+# instantiate the model
+model = EpitopePredictor(vocab_size=size_of_vocab,
+                         numeric_feature_dim=1,
+                         linear_dim=1,
+                         hidden_dim=num_hidden_nodes,
+                         output_dim=num_output_nodes,
+                         n_layers=num_layers,
+                         bidirectional=True, dropout=dropout)
+
+for i_batch, sample_batched in enumerate(dataloader):
+    model(sample_batched['Sequence'], sample_batched['Properties'], sample_batched['Original-Size'])
