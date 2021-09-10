@@ -18,12 +18,30 @@ NUM
 import json
 from utils import config
 from utils.protein_properties import read_fasta, init_netsurf_model, calculate_properties
+import numpy as np
+
+def merge_seq(input):
+    res = dict()
+    for key in input.keys():
+        name, seq = input[key]
+        low_seq = seq.lower()
+        new_seq = np.array(list(seq))
+        try:
+            curr_seq = res[low_seq][0]
+            idx = np.where(new_seq != curr_seq)
+            curr_seq[idx] = np.char.upper(curr_seq[idx])
+        except:
+            res[low_seq] = (new_seq, name)
+    ret_dict = {name: [name, ''.join(seq)] for seq, name in res.values()}
+    return ret_dict
 
 
 def data_enricher(input_file, output):
     parsed_input = read_fasta(input_file)
     netsurf_searcher, netsurf_model = init_netsurf_model()
-    sequence_properties = calculate_properties(sequences=parsed_input, window=1, netsurf_searcher=netsurf_searcher,
+    uniques_input = merge_seq(parsed_input)
+    print(len(uniques_input))
+    sequence_properties = calculate_properties(sequences=uniques_input, window=1, netsurf_searcher=netsurf_searcher,
                                                netsurf_model=netsurf_model)
     d = {}
     output_file = open(output, 'w')
