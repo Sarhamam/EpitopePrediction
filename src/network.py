@@ -1,5 +1,5 @@
-import json
 import sys
+import json
 import time
 import torch
 import logging
@@ -148,7 +148,7 @@ class EpitopePredictor(nn.Module):
                          batch_first=True)
 
         # dense layer
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(dropout)
         self.linear_test = nn.Linear(hidden_dim * (1 + bidirectional) + numeric_feature_dim * concat_after, 1)
 
         # activation function
@@ -200,18 +200,18 @@ def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap):
     return y_expected, y_pred
 
 
-def train(device, model, optimizer, loss_fn, train_dataset, batch_size, window_size, window_overlap, loss_at_end,
+def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, batch_size, window_size, window_overlap, loss_at_end,
           max_epochs=100,
           max_batches=200):
-    # Create train dataloader
-    dataloader = DataLoader(train_dataset,
-                            batch_size=batch_size,
-                            shuffle=True,
-                            num_workers=0,
-                            collate_fn=collate_fn)
+
     avg_train_loss = []
+    avg_train_acc = []
+
     avg_train_recall = []
     avg_train_precision = []
+
+    avg_test_loss = []
+    avg_test_acc = []
 
     start_time = time.time()
     for epoch_idx in range(max_epochs):
@@ -219,7 +219,7 @@ def train(device, model, optimizer, loss_fn, train_dataset, batch_size, window_s
         train_loss, train_acc, train_recall, train_precision = 0, 0, 0, 0
         j = 0
         epoch_start_time = time.time()
-        for batch_idx, batch in enumerate(dataloader):
+        for batch_idx, batch in enumerate(train_dataloader):
             X, p, y, og_size = batch['Sequence'], batch['Properties'], batch['Tags'], batch['Original-Size']
             og_size = [min(og_size[i], MAX_LENGTH) for i in range(len(og_size))]
 
@@ -227,14 +227,22 @@ def train(device, model, optimizer, loss_fn, train_dataset, batch_size, window_s
             y = y.to(device)
 
             if loss_at_end == True:
-                # Forward pass - SLICED
                 y_expected, y_pred = run_model_by_slice(device, model, X, p, y, og_size, window_size, window_overlap)
                 optimizer.zero_grad()
                 loss = loss_fn(y_pred, y_expected.unsqueeze(-1))
                 loss.backward()
+
                 # Weight updates
                 optimizer.step()
                 train_loss += loss.item()
+
+                # Accuracy, Recall, Precision
+                accuracy = calculate_accuracy(y_expected, y_pred)
+                train_acc += accuracy
+                recall, precision = recall_precision_fn(y_pred, y_expected)
+                train_recall += recall
+                train_precision += precision
+
             else:
                 win_shift = window_size - window_overlap
                 n_shifts = int(np.ceil(1.0 * (X.size(0) - window_size) / win_shift))  # need to check
@@ -263,35 +271,70 @@ def train(device, model, optimizer, loss_fn, train_dataset, batch_size, window_s
                     loss.backward()
                     optimizer.step()
 
-                    # Contribute to average loss
+                    # Contribute to average loss, accuracy etc.
                     train_loss += loss.item() / (n_shifts + 1)
-
-                    # Accuracy, Recall, Precision
-            y_expected = pack_padded_sequence(y.T, og_size, batch_first=True, enforce_sorted=False).data.unsqueeze(-1)
-            y_pred = model(X, p, og_size)
-            accuracy = calculate_accuracy(y_expected, y_pred)
-            train_acc += accuracy
-            recall, precision = recall_precision_fn(y_pred, y_expected)
-            train_recall += recall
-            train_precision += precision
+                    accuracy = calculate_accuracy(y_expected_W, y_pred_W)
+                    train_acc += accuracy/(n_shifts+1)
+                    recall, precision = recall_precision_fn(y_pred_W, y_expected_W)
+                    train_recall += recall/(n_shifts+1)
+                    train_precision += precision/(n_shifts+1)
 
             j += 1
 
             # For debugging
-            # if batch_idx == max_batches - 1:
-            #     break
+            if batch_idx == max_batches - 1:
+                break
 
         # avg batch metrics after each epoch (j total batches):
         avg_train_loss.append(train_loss / j)
+        avg_train_acc.append(train_acc / j)
         avg_train_recall.append(train_recall / j)
         avg_train_precision.append(train_precision / j)
 
         logger.info(
-            f"Epoch #{epoch_idx}, loss = {train_loss / j:.3f}, accuracy = {train_acc / j:.3f}, recall % = {train_recall / j:.1f}, precision % = {train_precision / j:.1f}, epoch_time={time.time() - epoch_start_time:.1f} sec, total_time={time.time() - start_time:.1f} sec")
+            f"Epoch #{epoch_idx}, train loss = {train_loss / j:.3f}, train accuracy = {train_acc / j:.3f}, train recall % = {train_recall / j:.1f}, train precision % = {train_precision / j:.1f}, epoch_time={time.time() - epoch_start_time:.1f} sec, total_time={time.time() - start_time:.1f} sec")
+
+        # test network on the test dataset
+        test_loss, test_acc = test_model(device, model, loss_fn, test_dataset)
+        avg_test_loss.append(test_loss)
+        avg_test_acc.append(test_acc)
+
+        logger.info(
+            f"\t  test loss = {test_loss:.3f}, test accuracy = {test_acc:.3f}")
 
     np.savetxt("dbg_loss.csv", np.asarray(avg_train_loss), delimiter=",")
 
-    return avg_train_loss
+    return avg_train_loss, avg_train_acc, avg_test_loss, avg_test_acc
+
+
+def test(model, loss_fn, dataset):
+    " run on test data and get loss and accuracy "
+    test_loss = 0
+    test_acc = 0
+    j = 0
+    for test_idx, test_row in enumerate(dataloader):
+        X, p, y, og_size = test_row['Sequence'], test_row['Properties'], test_row['Tags'], test_row['Original-Size']
+        y = y.type(torch.FloatTensor).to(device)
+
+        # predict
+        y_pred = model(X, p, og_size)
+        y_expected = pack_padded_sequence(y.T,og_size, batch_first=True,enforce_sorted=False).data.unsqueeze(-1)
+
+        # loss
+        loss = loss_fn(y_pred, y_expected)
+        loss = loss.item()
+        test_loss += loss
+
+        # Accuracy
+        accuracy = calculate_accuracy(y_expected, y_pred)
+        test_acc += accuracy
+
+        j += 1
+        # For debugging:
+        if j == 4:
+            break
+
+    return test_loss / j, test_acc / j
 
 
 def init_model(device, rnn_type, bidirectional, concat_after):
@@ -311,43 +354,28 @@ def init_model(device, rnn_type, bidirectional, concat_after):
     return model, optimizer, loss_fn
 
 
-def train_model(device, model, optimizer, loss_fn, train_dataset, epochs, batch_size, window_size, window_overlap,
+def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, epochs, batch_size, window_size, window_overlap,
                 loss_at_end):
-    train_loss = train(device, model, optimizer, loss_fn, train_dataset, batch_size=batch_size, max_epochs=epochs,
-                       max_batches=MAX_BATCHES, window_size=window_size, window_overlap=window_overlap,
-                       loss_at_end=loss_at_end)
-    return train_loss
+    # Create train dataloader
+    dataloader = DataLoader(train_dataset,
+                            batch_size=batch_size,
+                            shuffle=True,
+                            num_workers=0,
+                            collate_fn=collate_fn)
+
+    train_loss, train_acc, test_loss, test_acc = train(device, model, optimizer, loss_fn, dataloader, test_dataset,
+                                                        batch_size=batch_size, max_epochs=epochs, max_batches=MAX_BATCHES,
+                                                        window_size=window_size, window_overlap=window_overlap, loss_at_end=loss_at_end)
+    return train_loss, train_acc, test_loss, test_acc
 
 
 def test_model(device, model, loss_fn, test_dataset):
+    # Create test dataloader
     dataloader = DataLoader(test_dataset,
                             batch_size=1,
                             shuffle=True,
                             num_workers=0,
                             collate_fn=collate_fn)
-    # run on test data
-    i = 0
-    for test_idx, test_row in enumerate(dataloader):
-        i += 1
-        X, p, y, og_size = test_row['Sequence'], test_row['Properties'], test_row['Tags'], test_row['Original-Size']
-        y = y.type(torch.FloatTensor).to(device)
 
-        # predict
-        # Accuracy, Recall, Precision
-        y_expected = pack_padded_sequence(y.T, og_size, batch_first=True, enforce_sorted=False).data.unsqueeze(-1)
-        y_pred = model(X, p, og_size)
-
-        # loss
-        loss = loss_fn(y_pred, y_expected)
-        loss = loss.item()
-
-        # Recall & Precision
-        accuracy = calculate_accuracy(y_expected, y_pred)
-        recall, precision = recall_precision_fn(y_pred, y_expected)
-
-        logger.info(
-            f"Test #{i}, test loss = {loss:.3f}, test accuracy = {accuracy:.3f}, test recall = {recall:.3f}, test precision = {precision:.3f}")
-        logger.info(y_pred[y_expected == 1])
-        logger.info(f"min value of non-epitope: {min(y_pred[y_expected == 0]).item():.3f}")
-        logger.info(f"max value of non-epitope: {max(y_pred[y_expected == 0]).item():.3f}")
-        break
+    test_loss, test_acc = test(device, model, loss_fn, dataloader)
+    return test_loss, test_acc

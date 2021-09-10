@@ -38,9 +38,9 @@ def cli_main(input_file, output_file, mode, rnn_type, bidirectional, batch_size,
     if mode == 'train':
         model.train()
         train_data, test_data = create_dataset("./in.parsed")
-        avg_loss = train_model(device, model, optimizer, loss_fn, train_data, epochs, batch_size, window_size,
-                               window_overlap, loss_at_end)
-        logger.info("Training complete. Average training loss is %s", avg_loss)
+        train_loss, train_acc, test_loss, test_acc = train_model(device, model, optimizer, loss_fn, train_data, test_data,
+                                                                epochs, batch_size, window_size, window_overlap, loss_at_end)
+        logger.info("Training complete. Average training loss is %s", train_loss[-1])
 
 
 if __name__ == '__main__':
