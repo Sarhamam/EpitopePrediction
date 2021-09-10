@@ -11,7 +11,7 @@ NUM
 0
     7
     [m, ]
-    [hydrophobicity, polarity, volume, rsa,q8]
+    [hydrophobicity, polarity, volume, rsa, q3]
     [0, ]  <--- 0 or 1, if in epitope or not
 
 """

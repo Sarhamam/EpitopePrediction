@@ -67,6 +67,7 @@ def calculate_accuracy(true_cls, pred_cls):
     ## Current implementation treats a float under 0.5 as 0 and above as 1. We could think of a different method if needed ##
     """
     n = pred_cls.shape[0]
+    pred_cls = pred_cls[:,1] # probability of 1
     diff = torch.abs(torch.subtract(true_cls, pred_cls))
     corrects = torch.sum(diff < 0.5)
 
@@ -81,6 +82,7 @@ def recall_precision_fn(pred_cls, true_cls):
     Compares until the end of the shorter vector
     ## Current implementation treats a float under 0.5 as 0 and above as 1. We could think of a different method if needed ##
     """
+    pred_cls = pred_cls[:,1] # probability of 1
     true_indices = (true_cls == 1)  # indices where TP should be expected
     TP = sum(pred_cls[true_indices] > 0.5)
     FP = sum(pred_cls > 0.5) - TP  # Total predicted P minus TP
@@ -197,6 +199,11 @@ def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap):
         y_pred = torch.cat((y_pred, ans))
         y_expected = torch.cat((y_expected, y[Li:seq_len, i]))
 
+    y_pred = y_pred.unsqueeze(-1)
+    compl = 1 - y_pred
+    y_pred = torch.cat((compl, y_pred), 1) # probablity of 0, probablity of 1
+    y_expected = y_expected.type(torch.LongTensor)
+
     return y_expected, y_pred
 
 
@@ -223,13 +230,14 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, bat
             X, p, y, og_size = batch['Sequence'], batch['Properties'], batch['Tags'], batch['Original-Size']
             og_size = [min(og_size[i], MAX_LENGTH) for i in range(len(og_size))]
 
-            y = y.type(torch.FloatTensor)
+            y = y.type(torch.LongTensor)
             y = y.to(device)
 
             if loss_at_end == True:
                 y_expected, y_pred = run_model_by_slice(device, model, X, p, y, og_size, window_size, window_overlap)
+                y_expected = y_expected.unsqueeze(-1)
                 optimizer.zero_grad()
-                loss = loss_fn(y_pred, y_expected.unsqueeze(-1))
+                loss = loss_fn(y_pred, y_expected)
                 loss.backward()
 
                 # Weight updates
@@ -242,6 +250,10 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, bat
                 recall, precision = recall_precision_fn(y_pred, y_expected)
                 train_recall += recall
                 train_precision += precision
+
+                # print(y_pred[y_expected == 1, 0])
+                # print("min:", min(y_pred[y_expected == 0, 0]))
+                # print("max:", max(y_pred[y_expected == 0, 0]))
 
             else:
                 win_shift = window_size - window_overlap
@@ -265,6 +277,11 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, bat
                     y_pred_W = model(X_W, p_W, size_W)
                     y_expected_W = pack_padded_sequence(y_W.T, size_W, batch_first=True,
                                                         enforce_sorted=False).data.unsqueeze(-1)
+                    y_pred_W = y_pred_W.unsqueeze(-1)
+                    compl = 1 - y_pred_W
+                    y_pred_W = torch.cat((compl, y_pred_W), 1) # probablity of 0, probablity of 1
+                    y_expected_W = y_expected_W.type(torch.LongTensor)
+
                     loss = loss_fn(y_pred_W, y_expected_W)
 
                     # Weight updates
@@ -318,7 +335,12 @@ def test(model, loss_fn, dataset):
 
         # predict
         y_pred = model(X, p, og_size)
+        y_pred = y_pred.unsqueeze(-1)
+        compl = 1 - y_pred
+        y_pred = torch.cat((compl, y_pred), 1)  # probablity of 0, probablity of 1
+
         y_expected = pack_padded_sequence(y.T,og_size, batch_first=True,enforce_sorted=False).data.unsqueeze(-1)
+        y_expected = y_expected.type(torch.LongTensor)
 
         # loss
         loss = loss_fn(y_pred, y_expected)
@@ -349,8 +371,10 @@ def init_model(device, rnn_type, bidirectional, concat_after):
                              concat_after=concat_after,
                              rnn_type=rnn_type,
                              dropout=0.2).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-2)
-    loss_fn = nn.BCELoss().to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.0005)
+    w = torch.as_tensor([0.1, 2.2]) # weight for 0, weight for 1
+    loss_fn = nn.CrossEntropyLoss(weight=w).to(device)
+    # loss_fn = nn.BCELoss().to(device)
     return model, optimizer, loss_fn
 
 
