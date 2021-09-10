@@ -15,6 +15,7 @@ NUM
     [0, ]  <--- 0 or 1, if in epitope or not
 
 """
+import re
 import json
 import logging
 import numpy as np
@@ -38,6 +39,7 @@ def merge_seq(input):
         except:
             res[low_seq] = (new_seq, name)
     ret_dict = {name: [name, ''.join(seq)] for seq, name in res.values()}
+
     return ret_dict
 
 
