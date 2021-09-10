@@ -1,3 +1,4 @@
+import json
 import sys
 import time
 import torch
@@ -34,14 +35,15 @@ MAX_LENGTH = 10000
 
 
 class AminoAcidDataset(Dataset):
-    def __init__(self, parsed_data):
-        self.data = parsed_data
+    def __init__(self, path):
+        with open(path, "r") as f:
+            self.data = json.load(f)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        return self.data[str(idx)]
 
 
 amino_acids_vocab = build_vocab_from_iterator(
@@ -50,8 +52,8 @@ amino_acids_vocab = build_vocab_from_iterator(
 amino_acids_vocab.set_default_index(amino_acids_vocab["<unk>"])
 
 
-def create_dataset(parsed_data, train_test_ratio=0.7):
-    dataset = AminoAcidDataset(parsed_data)
+def create_dataset(path, train_test_ratio=0.7):
+    dataset = AminoAcidDataset(path)
     train_len = int(len(dataset) * train_test_ratio)
     train_dataset, test_dataset = random_split(dataset, [train_len, len(dataset) - train_len])
     return train_dataset, test_dataset
@@ -168,7 +170,7 @@ class EpitopePredictor(nn.Module):
             packed_properties = pack_padded_sequence(properties_final, text_lengths, batch_first=True,
                                                      enforce_sorted=False)
             dropout = torch.cat((dropout, packed_properties.data), -1)
-        return self.activation((self.linear_test(dropout)))
+        return self.activation(self.linear_test(dropout))
 
 
 def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap):
