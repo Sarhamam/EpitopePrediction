@@ -16,9 +16,14 @@ NUM
 
 """
 import json
-from utils import config
-from utils.protein_properties import read_fasta, init_netsurf_model, calculate_properties
+import logging
 import numpy as np
+
+from utils import config
+from utils.protein_properties import read_fasta, calculate_properties
+
+logger = logging.getLogger("DataEnricher")
+
 
 def merge_seq(input):
     res = dict()
@@ -36,15 +41,11 @@ def merge_seq(input):
     return ret_dict
 
 
-def data_enricher(input_file, output):
+def data_enricher(input_file):
     parsed_input = read_fasta(input_file)
-    netsurf_searcher, netsurf_model = init_netsurf_model()
-    uniques_input = merge_seq(parsed_input)
-    print(len(uniques_input))
-    sequence_properties = calculate_properties(sequences=uniques_input, window=1, netsurf_searcher=netsurf_searcher,
-                                               netsurf_model=netsurf_model)
+    parsed_input = merge_seq(parsed_input)
+    sequence_properties = calculate_properties(sequences=parsed_input, window=1)
     d = {}
-    output_file = open(output, 'w')
     num = 0
     for ident, sequence in sequence_properties.items():
         full_sequence = []
@@ -58,18 +59,11 @@ def data_enricher(input_file, output):
 
         d[num] = {"ID": ident, "Sequence": full_sequence, "Properties": full_properties, "Tags": tags}
         num += 1
-
-    json.dump(d, output_file)
-    output_file.close()
+    return d
 
 
 if __name__ == "__main__":
-    import logging
-
-    logger = logging.getLogger("DataEnricher")
-    data_enricher(input_file='/Users/sarhamam/git/sadna/EpitopePrediction/resources/test.fasta',
-                  output='/Users/sarhamam/git/sadna/EpitopePrediction/resources/test.tsv')
-    # for i in range(1, 307):
-    #     logger.debug("Starting to calculate %s iteration", i)
-    #     input_file = config["TRAIN"]["FASTA"].format(i=i)
-    #     data_enricher(input_file=input_file, output=config["TRAIN"]["TSV"].format(i=i))
+    output_file = open(config["TRAIN"]["JSON"], 'w')
+    data = data_enricher(input_file=config["TRAIN"]["FASTA"])
+    json.dump(data, output_file)
+    output_file.close()

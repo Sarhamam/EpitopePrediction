@@ -8,8 +8,8 @@ real_path = Path(os.path.realpath(__file__))
 config = configparser.ConfigParser()
 config.read(os.path.join(real_path.parent.parent.absolute(), "settings.ini"))
 
-config["TRAIN"]["FASTA"] = os.path.join(real_path.parent.parent.parent.absolute(), "resources", "db", "{i}.fasta")
-config["TRAIN"]["TSV"] = os.path.join(real_path.parent.parent.parent.absolute(), "resources", "db", "{i}.tsv")
+config["TRAIN"]["FASTA"] = os.path.join(real_path.parent.parent.parent.absolute(), "resources", "test.fasta")
+config["TRAIN"]["JSON"] = os.path.join(real_path.parent.parent.parent.absolute(), "resources", "iedb_linear_epitopes.json")
 config["LOGGER"]["FILE"] = os.path.join(real_path.parent.parent.parent.absolute(), "logs", "epitope_prediction.log")
 
 logger = logging.getLogger()

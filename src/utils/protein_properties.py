@@ -6,17 +6,7 @@ from Bio.SeqUtils.ProtParam import ProteinAnalysis
 import numpy as np
 from scipy import stats
 
-
 logger = logging.getLogger(__name__)
-try:
-    import netsurfp2 as nsp
-    import netsurfp2.model as nsp_model
-    import netsurfp2.preprocess as nsp_preprocess
-
-    NETSURF_AVAILABLE = True
-except ImportError:
-    logger.warning("NetsurfP Is unavailable")
-    NETSURF_AVAILABLE = False
 
 
 ##################
@@ -32,15 +22,13 @@ def read_fasta(input_file):
     return records
 
 
-def calculate_properties(sequences, window, netsurf_searcher, netsurf_model):
+def calculate_properties(sequences, window):
     """
     :param sequences: Protein sequences (dictionary with key name and value [description, sequence] )
     :param window: Window to calculate properties on
     :return: A list of preprocessed sequence, each element is a PreprocessedAminoAcidWindow,
     containing the volume, hydrophobicity, polarity, and type.
     """
-    netsurf_predictions = calculate_netsurf_properties(sequences, window, netsurf_searcher=netsurf_searcher,
-                                                       netsurf_model=netsurf_model)
     result = {}
     logger.debug("Starting to calculate scale properties")
     STRUCT_WINDOW = 7
@@ -52,7 +40,7 @@ def calculate_properties(sequences, window, netsurf_searcher, netsurf_model):
         polarity = _calculate_polarity(seq, window)
         hydrophobicity = _calculate_hydrophobicity(seq, window)
         rsa = _calculate_rsa(seq, window)
-        q3 = _calculate_secondary_structure(seq, STRUCT_WINDOW) # secondary structure
+        q3 = _calculate_secondary_structure(seq, STRUCT_WINDOW)  # secondary structure
         window_sequence = iterutils.windowed(seq, window)
         # Iterate with a sliding window
         for i in range(len(window_sequence)):  # Chunk the sequence into groups of size "window"
@@ -61,7 +49,7 @@ def calculate_properties(sequences, window, netsurf_searcher, netsurf_model):
                                                    polarity=polarity[i],
                                                    hydrophobicity=hydrophobicity[i],
                                                    rsa=rsa[i],
-                                                   q3=q3[i]) # it doesn't work with windows larger than 1 !!
+                                                   q3=q3[i])  # it doesn't work with windows larger than 1 !!
             preprocessed_sequence.append(aa_group)
 
         result[seq_name] = preprocessed_sequence
@@ -71,51 +59,6 @@ def calculate_properties(sequences, window, netsurf_searcher, netsurf_model):
     logger.debug("Scale properties calculated.")
 
     return result
-
-
-def init_netsurf_model():
-    """
-    Initiailises the netsurf model, returns HHBlits searcher and the netsurf model.
-    If netsurf is not installed, returns a tuple of Nones.
-    Should only be called once.
-    """
-    if not NETSURF_AVAILABLE:
-        # Do not crash if NSP is unavailable
-        return None, None
-    logger.debug("Initializing NetsurfP")
-    searcher = nsp_preprocess.MMseqs(config["NETSURF"]["UNIREF_PATH"], n_threads=6)
-    logger.debug("HHBlits searcher initialized")
-    netsurf_model = nsp_model.TfGraphModel.load_graph(config["NETSURF"]["MMSEEQS_PATH"])
-    logger.debug("NetsurfP Graph Model initialized")
-    return searcher, netsurf_model
-
-
-def calculate_netsurf_properties(sequences, window, netsurf_searcher, netsurf_model, outdir=None):
-    """
-    Calculates RSA and SS of the sequence with respect to the given window.
-    :param sequences SeqRecord respresenting the protein sequence
-    :param window to calculate properties with
-    :param netsurf_searcher searcher object from netsurfP2 package
-    :param netsurf_model model object from netsurfP2 package
-    :param outdir output dir for netsurfp2
-    """
-    if not NETSURF_AVAILABLE:
-        logger.warning("Netsurf properties not calculated.")
-        return None
-
-    logger.debug("Starting to calculate NetsurfP properties")
-    if not outdir:
-        outdir = "./outdir_netsurf"
-    for name in sequences:
-        # Change sequences to uppercase sequences, this is how netsurf works
-        sequences[name][1] = sequences[name][1].upper()
-
-    profiles = netsurf_searcher(sequences, outdir)
-    results = netsurf_model.predict(profiles, outdir, batch_size=25)  # Default batch size for NSP2.
-    # Results in a list of dictionaries, keys: id,desc,seq,n,rsa,asa,phi,psi,disorder, interface, q3, q8
-    results = {res['id']: res for res in results}  # This dictionary will have rsa, q3, q8, and q3_prob, q8_prob,phi,psi
-    logger.debug("NetsurfP properties calculated.")
-    return results
 
 
 ###################
@@ -138,13 +81,15 @@ def _calculate_scale(seq, window, scale):
     res = analyzed_protein.protein_scale(window=window, param_dict=scale)
     return res
 
+
 def _nomalized_data(dic):
     """ Calculates z-score for every value in a dictionary:  (data - data.mean()) / sqrt(data.var())"""
     keys, vals = zip(*dic.items())
     z = stats.zscore(vals)
-    newmap = dict(zip(keys,z))
+    newmap = dict(zip(keys, z))
     dic_new = {k: round(v, 2) for k, v in newmap.items()}
     return dic_new
+
 
 def _calculate_polarity(seq, window):
     """ Calculates sequence polarity with respect to the given window.
@@ -156,7 +101,7 @@ def _calculate_polarity(seq, window):
                 'E': -0.77, 'G': -0.41, 'H': 0.49, 'I': 1.31, 'L': 1.21, 'K': -1.18,
                 'M': 1.27, 'F': 1.27, 'P': 0.0, 'S': -0.50, 'T': -0.27, 'W': 0.88,
                 'Y': 0.33, 'V': 1.0}
-    POLARITY_N =_nomalized_data(POLARITY)
+    POLARITY_N = _nomalized_data(POLARITY)
     return _calculate_scale(seq, window, POLARITY_N)
 
 
@@ -171,7 +116,7 @@ def _calculate_hydrophobicity(seq, window):
                       'M': 1.02, 'F': 1.92, 'P': -0.49, 'S': -0.55, 'T': -0.28, 'W': 0.50,
                       'Y': 1.67, 'V': 0.91}
 
-    HYDROPHOBICITY_N =_nomalized_data(HYDROPHOBICITY)
+    HYDROPHOBICITY_N = _nomalized_data(HYDROPHOBICITY)
     return _calculate_scale(seq, window, HYDROPHOBICITY_N)
 
 
@@ -189,6 +134,7 @@ def _calculate_volume(seq, window):
     VOLUME_N = _nomalized_data(VOLUME)
     return _calculate_scale(seq, window, VOLUME_N)
 
+
 def _calculate_rsa(seq, window):
     """ Calculates sequence RSA with respect to the given window.
     :param seq string representing the protein sequence
@@ -203,6 +149,7 @@ def _calculate_rsa(seq, window):
     RSA_N = _nomalized_data(RSA)
     return _calculate_scale(seq, window, RSA_N)
 
+
 def _calculate_secondary_structure(seq, window):
     """ Calculates sequence secondary structure with respect to the given window.
     Each residue gets a secondary structure estimate from the window in which it is in the middle of
@@ -210,25 +157,26 @@ def _calculate_secondary_structure(seq, window):
     :param window to calculate the secondary structure - WINDOW MUST BE ODD AT THE MOMENT
     """
     # STRUCTS = {0: "Helix", 1: "Turn", 2: "Sheet"}
-    window_sequence = iterutils.windowed(seq, window) # sliding windows
+    window_sequence = iterutils.windowed(seq, window)  # sliding windows
     residue_num = len(seq)
     struct = [0 for _ in range(residue_num)]
     tail = (window - 1) // 2
     for i in range(residue_num):
-        if i < tail: # first few residues don't have a window surrounding them
-            sub_seq = ''.join(window_sequence[0]) # instead take the result of the first window for them
-        elif residue_num-i <= tail: # last few residues don't have a window surrounding them
-            sub_seq = ''.join(window_sequence[-1]) # instead take the result of the last window for them
+        if i < tail:  # first few residues don't have a window surrounding them
+            sub_seq = ''.join(window_sequence[0])  # instead take the result of the first window for them
+        elif residue_num - i <= tail:  # last few residues don't have a window surrounding them
+            sub_seq = ''.join(window_sequence[-1])  # instead take the result of the last window for them
         else:
-            sub_seq = ''.join(window_sequence[i-tail])
+            sub_seq = ''.join(window_sequence[i - tail])
         prob = ProteinAnalysis(sub_seq.upper()).secondary_structure_fraction()
         # here we choose argmax but use randomness in tie situations
-        isMax = np.array(list(enumerate(prob == np.max(prob)))) # rows of (index, is max)
-        maxIdx = isMax[np.where(isMax[:,1] == 1)] # rows of (index, 1) because only max were left
-        argMax = np.random.choice(maxIdx[:,0]) # choose random index
+        isMax = np.array(list(enumerate(prob == np.max(prob))))  # rows of (index, is max)
+        maxIdx = isMax[np.where(isMax[:, 1] == 1)]  # rows of (index, 1) because only max were left
+        argMax = np.random.choice(maxIdx[:, 0])  # choose random index
         # struct[i] = STRUCTS[argMax]
         struct[i] = float(argMax)
     return struct
+
 
 ##########
 # Classes
@@ -252,8 +200,5 @@ class PreprocessedAminoAcidWindow(object):
         type_as_str = "".join(self.type)
         # q3_as_str = "".join(self.q3)
         properties_to_encode = [self.hydrophobicity, self.polarity, self.volume, self.rsa, self.q3]
-        # if NETSURF_AVAILABLE:
-        #     # Encode secondary structure and RSA if available
-        #     properties_to_encode.extend([*self.rsa, self.q8])
 
         return type_as_str, tuple(p for p in properties_to_encode)
