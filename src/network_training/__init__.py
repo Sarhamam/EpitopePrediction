@@ -44,7 +44,7 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
         epoch_start_time = time.time()
         for batch_idx, batch in enumerate(train_dataloader):
             X, p, y, og_size = batch['Sequence'], batch['Properties'], batch['Tags'], batch['Original-Size']
-            y = y.type(torch.LongTensor).to(device)
+            y = y.type(torch.FloatTensor).to(device)
 
             og_size = [min(og_size[i], max_length) for i in range(len(og_size))]
             if (window_size == -1):
@@ -52,7 +52,7 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                 window_overlap = 0
 
             if loss_at_end == True:
-                y_expected, y_pred = run_model_by_slice(device, model, X, p, y, og_size, window_size, window_overlap)
+                y_expected, y_pred = run_model_by_slice(device, model, X, p, y, og_size, window_size, window_overlap, not(loss_fn.weight is None) )
                 y_expected = y_expected.unsqueeze(-1)
                 optimizer.zero_grad()
                 loss = loss_fn(y_pred, y_expected)
@@ -95,8 +95,9 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                     y_pred_W = model(X_W, p_W, size_W)
                     y_expected_W = pack_padded_sequence(y_W.T, size_W, batch_first=True,
                                                         enforce_sorted=False).data.unsqueeze(-1)
-                    y_pred_W = prepare_for_crossentropy_loss(y_pred_W)
-                    y_expected_W = y_expected_W.type(torch.LongTensor).to(device)
+                    if not(loss_fn.weight is None):
+                        y_pred_W = prepare_for_crossentropy_loss(y_pred_W)
+                        y_expected_W = y_expected_W.type(torch.LongTensor).to(device)
 
                     loss = loss_fn(y_pred_W, y_expected_W)
 
@@ -162,14 +163,15 @@ def test(device, model, loss_fn, dataset):
     j = 0
     for test_idx, test_row in enumerate(dataloader):
         X, p, y, og_size = test_row['Sequence'], test_row['Properties'], test_row['Tags'], test_row['Original-Size']
-        y = y.type(torch.LongTensor).to(device)
+        y = y.type(torch.FloatTensor).to(device)
 
         # predict
         y_pred = model(X, p, og_size)
-        y_pred = prepare_for_crossentropy_loss(y_pred)
-
         y_expected = pack_padded_sequence(y.T, og_size, batch_first=True, enforce_sorted=False).data.unsqueeze(-1)
-        y_expected = y_expected.type(torch.LongTensor).to(device)
+
+        if not(loss_fn.weight is None):
+            y_pred = prepare_for_crossentropy_loss(y_pred)
+            y_expected = y_expected.type(torch.LongTensor).to(device)
 
         # loss
         loss = loss_fn(y_pred, y_expected)
@@ -191,7 +193,7 @@ def test(device, model, loss_fn, dataset):
 # Auxiliary functions
 #####################
 
-def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap):
+def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap,weighted_loss):
     win_shift = win_size - win_overlap
     y_pred = torch.empty(0, device=device)
     y_expected = torch.empty(0, device=device)
@@ -214,8 +216,9 @@ def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap):
         ans = model(X[Li:seq_len, i:i + 1], p[Li:seq_len, i:i + 1, :], size_w)
         y_pred = torch.cat((y_pred, ans))
         y_expected = torch.cat((y_expected, y[Li:seq_len, i]))
-
-    y_pred = prepare_for_crossentropy_loss(y_pred)
-    y_expected = y_expected.type(torch.LongTensor).to(device)
+    
+    if weighted_loss:
+        y_pred = prepare_for_crossentropy_loss(y_pred)
+        y_expected = y_expected.type(torch.LongTensor).to(device)
 
     return y_expected, y_pred

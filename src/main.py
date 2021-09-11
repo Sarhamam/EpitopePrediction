@@ -37,9 +37,11 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--dont_print', is_flag=True, help="Dont print results to stdout")
 @click.option('--accuracy_report', type=click.Path(exists=False),
               help="CSV report containing loss and accuracy per epoch", default="report.csv")
+@click.option('--weighted_loss', type=bool, help="Use weighted loss function instead of BCE", default=False)
+
 def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, batch_size, concat_after, window_size,
              window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features,
-             dont_print, accuracy_report):
+             dont_print, accuracy_report,weighted_loss):
     try:
         _, file_type = os.path.splitext(input_file)
         if file_type == '.fasta':
@@ -61,7 +63,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
         logger.info('Using device: %s\n', device)
 
     model, optimizer, loss_fn = init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr,
-                                           numeric_features)
+                                           numeric_features, weighted_loss)
     if window_size == 0:
         window_size = -1
     if mode == 'train':

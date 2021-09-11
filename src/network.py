@@ -80,7 +80,7 @@ class EpitopePredictor(nn.Module):
         return self.activation(self.linear_test(dropout))
 
 
-def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features=True):
+def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features=True, weighted_loss=False):
     # instantiate the model
     model = EpitopePredictor(input_size=len(amino_acids_vocab),
                              embed_size=EMBED_SIZE,
@@ -92,8 +92,11 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
                              rnn_type=rnn_type,
                              dropout=DROPOUT).to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)  # lr=0.0005
-    w = torch.as_tensor([1.0, 7.7])  # weight for 0, weight for 1
-    loss_fn = nn.CrossEntropyLoss(weight=w).to(device)
+    if weighted_loss:
+        w = torch.as_tensor([1.0, 1.0])  # weight for 0, weight for 1
+        loss_fn = nn.CrossEntropyLoss(weight=w).to(device)
+    else:
+        loss_fn = nn.BCELoss().to(device)
     return model, optimizer, loss_fn
 
 
