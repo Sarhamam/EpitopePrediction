@@ -20,10 +20,10 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--bidirectional', type=bool, help="Bidirectional RNN", default=True)
 @click.option('--batch_size', type=int, help="Batch size", default=10)
 @click.option('--concat_after', type=bool, help="Concat numerical properties with RNN output", default=False)
-@click.option('--window_size', type=int, help="Window size", default=256)
+@click.option('--window_size', type=int, help="Window size", default=0)
 @click.option('--window_overlap', type=int, help="Window overlap", default=0)
 @click.option('--loss_at_end', type=bool, help="Calculates loss after batch (instead of after window)", default=False)
-@click.option('--epochs', type=int, help="Number of epochs to train", default=10)
+@click.option('--epochs', type=int, help="Number of epochs to train", default=15)
 @click.option('--max_batches', type=int, help="Number of maximum batches (-1 is unlimited)", default=-1)
 @click.option('--max_length', type=int, help="Max truncated sequences length", default=10000)
 @click.option('--hidden_dim', type=int, help="RNN hidden dimensions", default=128)
@@ -31,9 +31,10 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--lr', type=click.FloatRange(1e-6, 1e-1, clamp=True), help="Learning rate", default=5e-4)
 @click.option('--numeric_features', type=bool, help="Include numeric features", default=True)
 @click.option('--dont_print', is_flag=True, help="Dont print results to stdout")
+@click.option('--accuracy_report', type=click.Path(exists=False), default="report.csv")
 def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, batch_size, concat_after, window_size,
              window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features,
-             dont_print):
+             dont_print, accuracy_report):
     try:
         parsed_data = data_enricher(input_file)
         with open("./in.parsed", "w") as f:
@@ -52,6 +53,8 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
 
     model, optimizer, loss_fn = init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr,
                                            numeric_features)
+    if window_size == 0:
+        window_size = -1
     if mode == 'train':
         model.train()
         train_data, test_data = create_dataset("./in.parsed")
@@ -59,7 +62,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
                                                                  test_data,
                                                                  epochs, batch_size, window_size, window_overlap,
                                                                  loss_at_end,
-                                                                 max_batches, max_length)
+                                                                 max_batches, max_length, accuracy_report)
         logger.info("Training complete. Average training loss is %s", train_loss[-1])
         logger.info("Saving weights to %s", output_file)
         torch.save(model.state_dict(), output_file)

@@ -1,3 +1,5 @@
+import csv
+import os
 import time
 import torch
 import logging
@@ -20,7 +22,7 @@ MAX_LENGTH = config["NETWORK"].getint("MAX_LENGTH")
 
 
 def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, window_size, window_overlap, loss_at_end,
-          max_epochs=100, max_batches=200, max_length=10000):
+          accuracy_report, max_epochs=100, max_batches=200, max_length=10000):
     avg_train_loss = []
     avg_train_acc = []
 
@@ -31,6 +33,10 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
     avg_test_acc = []
 
     start_time = time.time()
+    csvfile = open(accuracy_report, 'w', newline='')
+    csvwriter = csv.writer(csvfile, delimiter=' ')
+    csvwriter.writerow(["Epoch #", "Train loss", "Train accuracy", "Train recall", "Train precision", "Epoch time",
+                        "Total time", "Test loss", "Test accuracy", "Test recall", "Test precision"])
     for epoch_idx in range(max_epochs):
         logger.info("Running epoch %s out of %s", epoch_idx + 1, max_epochs)
         train_loss, train_acc, train_recall, train_precision = 0, 0, 0, 0
@@ -106,16 +112,6 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                     train_recall += recall / (n_shifts + 1)
                     train_precision += precision / (n_shifts + 1)
 
-                # Why not like the following?
-                # # Accuracy, Recall, Precision
-                # y_expected = pack_padded_sequence(y.T,og_size, batch_first=True,enforce_sorted=False).data.unsqueeze(-1)
-                # y_pred = model(X,p,og_size)
-                # accuracy = calculate_accuracy(y_expected, y_pred)
-                # train_acc += accuracy
-                # recall,precision = recall_precision_fn(y_pred, y_expected)
-                # train_recall += recall
-                # train_precision += precision
-
             j += 1
 
             if batch_idx == max_batches - 1:
@@ -126,19 +122,27 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
         avg_train_acc.append(train_acc / j)
         avg_train_recall.append(train_recall / j)
         avg_train_precision.append(train_precision / j)
-
-        logger.info(
-            f"Epoch #{epoch_idx}, train loss = {train_loss / j:.3f}, train accuracy = {train_acc / j:.3f}, train recall % = {train_recall / j:.1f}, train precision % = {train_precision / j:.1f}, epoch_time={time.time() - epoch_start_time:.1f} sec, total_time={time.time() - start_time:.1f} sec")
+        epoch_time = time.time() - epoch_start_time
+        total_time = time.time() - start_time
+        logger.info(f"Epoch #{epoch_idx}, train loss = {train_loss / j:.3f}, train accuracy = {train_acc / j:.3f},"
+                    f" train recall % = {train_recall / j:.1f}, train precision % = {train_precision / j:.1f},"
+                    f" epoch_time={epoch_time:.1f} sec, total_time={total_time:.1f} sec")
 
         # test network on the test dataset
-        test_loss, test_acc = test(device, model, loss_fn, test_dataset)
+        test_loss, test_acc, test_recall, test_precision = test(device, model, loss_fn, test_dataset)
         avg_test_loss.append(test_loss)
         avg_test_acc.append(test_acc)
-
+        # Save each epoch's weights, accuracy loss and precision
+        if not os.path.exists("train_results"):
+            os.mkdir("train_results")
+        torch.save(model.state_dict(), f"./train_results/weights_{epoch_idx}")
+        csvwriter.writerow(
+            [epoch_idx, train_loss / j, train_acc.item() / j, train_recall / j, train_precision / j, epoch_time,
+             total_time, test_loss, test_acc.item(), test_recall, test_precision])
         logger.info(
             f"\t  test loss = {test_loss:.3f}, test accuracy = {test_acc:.3f}")
 
-    np.savetxt("dbg_loss.csv", np.asarray(avg_train_loss), delimiter=",")
+    np.savetxt("total_loss.csv", np.asarray(avg_train_loss), delimiter=",")
 
     return avg_train_loss, avg_train_acc, avg_test_loss, avg_test_acc
 
@@ -152,6 +156,8 @@ def test(device, model, loss_fn, dataset):
                             collate_fn=collate_fn)
     test_loss = 0
     test_acc = 0
+    test_recall = 0
+    test_precision = 0
     j = 0
     for test_idx, test_row in enumerate(dataloader):
         X, p, y, og_size = test_row['Sequence'], test_row['Properties'], test_row['Tags'], test_row['Original-Size']
@@ -172,13 +178,13 @@ def test(device, model, loss_fn, dataset):
         # Accuracy
         accuracy = calculate_accuracy(y_expected, y_pred)
         test_acc += accuracy
+        recall, precision = recall_precision_fn(y_pred, y_expected)
+        test_recall += recall
+        test_precision += precision
 
         j += 1
-        # For debugging:
-        if j == 4:
-            break
 
-    return test_loss / j, test_acc / j
+    return test_loss / j, test_acc / j, test_recall / j, test_precision / j
 
 
 # Auxiliary functions

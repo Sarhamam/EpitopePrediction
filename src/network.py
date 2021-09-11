@@ -91,14 +91,14 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
                              concat_after=concat_after,
                              rnn_type=rnn_type,
                              dropout=DROPOUT).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr) #lr=0.0005
-    w = torch.as_tensor([1.0, 7.7]) # weight for 0, weight for 1
+    optimizer = optim.Adam(model.parameters(), lr=lr)  # lr=0.0005
+    w = torch.as_tensor([1.0, 7.7])  # weight for 0, weight for 1
     loss_fn = nn.CrossEntropyLoss(weight=w).to(device)
     return model, optimizer, loss_fn
 
 
-def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, epochs, batch_size, window_size, window_overlap,
-                loss_at_end,max_batches,max_length):
+def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, epochs, batch_size, window_size,
+                window_overlap, loss_at_end, max_batches, max_length, accuracy_report):
     # Create train dataloader
     dataloader = DataLoader(train_dataset,
                             batch_size=batch_size,
@@ -107,9 +107,10 @@ def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, 
                             collate_fn=collate_fn)
 
     train_loss, train_acc, test_loss, test_acc = train(device, model, optimizer, loss_fn, dataloader, test_dataset,
-                                                       max_epochs=epochs, max_batches=MAX_BATCHES,
+                                                       max_epochs=epochs, max_batches=max_batches,
                                                        window_size=window_size, window_overlap=window_overlap,
-                                                       loss_at_end=loss_at_end, max_length=max_length)
+                                                       loss_at_end=loss_at_end, max_length=max_length,
+                                                       accuracy_report=accuracy_report)
     return train_loss, train_acc, test_loss, test_acc
 
 
