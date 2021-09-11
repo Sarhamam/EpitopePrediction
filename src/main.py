@@ -3,6 +3,8 @@ import json
 import click
 import torch
 import logging
+import os
+from shutil import copyfile
 
 from data_enricher import data_enricher
 from network import init_model, train_model, predict
@@ -39,9 +41,13 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
              window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features,
              dont_print, accuracy_report):
     try:
-        parsed_data = data_enricher(input_file)
-        with open("./in.parsed", "w") as f:
-            json.dump(parsed_data, f)
+        _, file_type = os.path.splitext(input_file)
+        if file_type == '.fasta':
+            parsed_data = data_enricher(input_file)
+            with open("./in.parsed", "w") as f:
+                json.dump(parsed_data, f)
+        if file_type == '.tsv':           
+            copyfile(input_file,"./in.parsed")
 
     except Exception:
         message = "Failed parsing input file. Please make sure the file is a proper FASTA file."

@@ -124,23 +124,24 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
         avg_train_precision.append(train_precision / j)
         epoch_time = time.time() - epoch_start_time
         total_time = time.time() - start_time
-        logger.info(f"Epoch #{epoch_idx}, train loss = {train_loss / j:.3f}, train accuracy = {train_acc / j:.3f},"
+        logger.info(f"Epoch #{epoch_idx+1}, train loss = {train_loss / j:.3f}, train accuracy = {train_acc / j:.3f},"
                     f" train recall % = {train_recall / j:.1f}, train precision % = {train_precision / j:.1f},"
                     f" epoch_time={epoch_time:.1f} sec, total_time={total_time:.1f} sec")
 
         # test network on the test dataset
+        test_start_time = time.time()
         test_loss, test_acc, test_recall, test_precision = test(device, model, loss_fn, test_dataset)
         avg_test_loss.append(test_loss)
         avg_test_acc.append(test_acc)
         # Save each epoch's weights, accuracy loss and precision
         if not os.path.exists("train_results"):
             os.mkdir("train_results")
-        torch.save(model.state_dict(), f"./train_results/weights_{epoch_idx}")
+        torch.save(model.state_dict(), f"./train_results/weights_{epoch_idx+1}")
         csvwriter.writerow(
-            [epoch_idx, train_loss / j, train_acc.item() / j, train_recall / j, train_precision / j, epoch_time,
-             total_time, test_loss, test_acc.item(), test_recall, test_precision])
+            [epoch_idx+1, train_loss / j, train_acc.item() / j, train_recall / j, train_precision / j, epoch_time,
+             total_time, test_loss, test_acc, test_recall, test_precision])
         logger.info(
-            f"\t  test loss = {test_loss:.3f}, test accuracy = {test_acc:.3f}")
+            f"\t  test loss = {test_loss:.3f}, test accuracy = {test_acc:.3f}, test_time={time.time()-test_start_time:.1f} sec")
 
     np.savetxt("total_loss.csv", np.asarray(avg_train_loss), delimiter=",")
 
@@ -168,7 +169,7 @@ def test(device, model, loss_fn, dataset):
         y_pred = prepare_for_crossentropy_loss(y_pred)
 
         y_expected = pack_padded_sequence(y.T, og_size, batch_first=True, enforce_sorted=False).data.unsqueeze(-1)
-        y_expected = y_expected.type(torch.LongTensor)
+        y_expected = y_expected.type(torch.LongTensor).to(device)
 
         # loss
         loss = loss_fn(y_pred, y_expected)
@@ -215,6 +216,6 @@ def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap):
         y_expected = torch.cat((y_expected, y[Li:seq_len, i]))
 
     y_pred = prepare_for_crossentropy_loss(y_pred)
-    y_expected = y_expected.type(torch.LongTensor)
+    y_expected = y_expected.type(torch.LongTensor).to(device)
 
     return y_expected, y_pred
