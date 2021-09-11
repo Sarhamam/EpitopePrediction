@@ -5,7 +5,7 @@ import torch
 import logging
 
 from data_enricher import data_enricher
-from network import init_model, train_model
+from network import init_model, train_model, predict
 from utils.network_utils import get_device, create_dataset
 
 logger = logging.getLogger("EpitopePrediction")
@@ -15,15 +15,15 @@ logger = logging.getLogger("EpitopePrediction")
 @click.argument('input_file', type=click.Path(exists=True))
 @click.argument('output_file', type=click.Path(exists=False))
 @click.argument('mode', type=click.Choice(['train', 'predict']))
-@click.option('--weights', type=click.Path(exists=True), default="../resources")
-@click.option('--rnn_type', type=click.Choice(['LSTM', 'GRU']), help="Type of network to run", default='LSTM')
+@click.option('--weights', type=click.Path(exists=True), default="../resources/weights.pytw")
+@click.option('--rnn_type', type=click.Choice(['LSTM', 'GRU']), help="Type of network to run", default='GRU')
 @click.option('--bidirectional', type=bool, help="Bidirectional RNN", default=True)
 @click.option('--batch_size', type=int, help="Batch size", default=10)
 @click.option('--concat_after', type=bool, help="Concat numerical properties with RNN output", default=False)
 @click.option('--window_size', type=int, help="Window size", default=-1)
 @click.option('--window_overlap', type=int, help="Window overlap", default=0)
 @click.option('--loss_at_end', type=bool, help="Calculates loss after batch (instead of after window)", default=True)
-@click.option('--epochs', type=int, help="Number of epochs to train", default=1)
+@click.option('--epochs', type=int, help="Number of epochs to train", default=10)
 @click.option('--max_batches', type=int, help="Number of maximum batches (-1 is unlimited)", default=-1)
 @click.option('--max_length', type=int, help="Max truncated sequences length", default=10000)
 @click.option('--hidden_dim', type=int, help="RNN hidden dimensions", default=128)
@@ -38,20 +38,45 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
         with open("./in.parsed", "w") as f:
             json.dump(parsed_data, f)
 
-    except Exception as e:
+    except Exception:
         message = "Failed parsing input file. Please make sure the file is a proper FASTA file."
         logger.exception(message)
         sys.exit(message)
 
     device = get_device()
+    if device == 'cuda':
+        logger.info(f"Detected CUDA on device #{torch.cuda.current_device()}: {torch.cuda.get_device_name(0)}")
+    else:
+        logger.info('Using device: %s\n', device)
+
     model, optimizer, loss_fn = init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features)
     if mode == 'train':
         model.train()
         train_data, test_data = create_dataset("./in.parsed")
         train_loss, train_acc, test_loss, test_acc = train_model(device, model, optimizer, loss_fn, train_data, test_data,
-                                                                epochs, batch_size, window_size, window_overlap, loss_at_end, 
+                                                                epochs, batch_size, window_size, window_overlap, loss_at_end,
                                                                 max_batches, max_length)
         logger.info("Training complete. Average training loss is %s", train_loss[-1])
+        logger.info("Saving weights to %s", output_file)
+        torch.save(model.state_dict(), output_file)
+    else:  # Predict mode
+        model.load_state_dict(torch.load(weights))
+        model.eval()
+        test_data = create_dataset("./in.parsed", predict=True)
+        results = predict(model, test_data)
+        with open(output_file, "w") as f:
+            json.dump(results, f)
+
+        for idx, d in parsed_data.items():
+            print(d["ID"])
+            fg = lambda text, color: "\33[38;5;" + str(color) + "m" + text + "\33[0m"
+            probabilities = results[d["ID"]]
+            colored_result = ""
+            for i in range(len(probabilities)):
+                color = int(88 * (1 - probabilities[i]) + 124 * (probabilities[i]))
+                colored_result += fg(d["Sequence"][i], color)
+
+            print(colored_result)
 
 
 if __name__ == '__main__':

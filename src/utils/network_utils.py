@@ -36,10 +36,18 @@ class AminoAcidDataset(Dataset):
 # Dataset functions
 ##################
 
-def create_dataset(path, train_test_ratio=0.7):
+def create_dataset(path, train_test_ratio=0.7, predict=False):
     dataset = AminoAcidDataset(path)
+    if predict:
+        return dataset
     train_len = int(len(dataset) * train_test_ratio)
-    train_dataset, test_dataset = random_split(dataset, [train_len, len(dataset) - train_len])
+    if train_len > 0:
+        train_dataset, test_dataset = random_split(dataset, [train_len, len(dataset) - train_len])
+    else:
+        logger.warning("Dataset is too short to split. Will use the same data for training and testing.")
+        test_dataset = dataset
+        train_dataset = dataset
+
     return train_dataset, test_dataset
 
 
@@ -69,20 +77,21 @@ def collate_fn(batch):
         "Tags": padded_tags,
         "Original-Size": original_sizes
     }
+    if len(batch) == 1:  # Predict
+        result['ID'] = batch[0]['ID']
     return result
 
 
 #  Getters
 ##########
 
+
 def get_device():
     if torch.cuda.is_available():
-        logger.info(f"Detected CUDA on device #{torch.cuda.current_device()}: {torch.cuda.get_device_name(0)}")
         device = 'cuda'
         torch.backends.cudnn.deterministic = True
     else:
         device = 'cpu'
-    logger.info('Using device: %s\n', device)
     return device
 
 

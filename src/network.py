@@ -10,7 +10,7 @@ from torch.nn.utils.rnn import pack_padded_sequence
 
 from utils import config
 from network_training import train
-from utils.network_utils import collate_fn, amino_acids_vocab
+from utils.network_utils import collate_fn, amino_acids_vocab, get_device
 
 logger = logging.getLogger("RNNNetwork")
 
@@ -32,11 +32,10 @@ MAX_LENGTH = config["NETWORK"].getint("MAX_LENGTH")
 
 class EpitopePredictor(nn.Module):
     # define all the layers used in model
-    def __init__(self, device, input_size, embed_size, numeric_feature_dim, hidden_dim, n_layers,
+    def __init__(self, input_size, embed_size, numeric_feature_dim, hidden_dim, n_layers,
                  bidirectional, dropout, concat_after, rnn_type):
         # Constructor
         super().__init__()
-        self.device = device
         self.concat_after = concat_after
         # embedding layer
         self.embedding = nn.Embedding(input_size, embed_size)
@@ -65,8 +64,8 @@ class EpitopePredictor(nn.Module):
         self.numeric_feature_dim = numeric_feature_dim
 
     def forward(self, sequences, properties, text_lengths):
-        sequences_final = self.embedding(sequences.to(self.device).transpose(1, 0))
-        properties_final = properties.to(self.device).transpose(1, 0)
+        sequences_final = self.embedding(sequences.to(get_device()).transpose(1, 0))
+        properties_final = properties.to(get_device()).transpose(1, 0)
         if (self.numeric_feature_dim > 0) and (not self.concat_after):
             all_final = torch.cat((sequences_final, properties_final), -1)
         else:
@@ -89,7 +88,6 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
                              hidden_dim=hidden_dim,
                              n_layers=n_layers,
                              bidirectional=bidirectional,
-                             device=device,
                              concat_after=concat_after,
                              rnn_type=rnn_type,
                              dropout=DROPOUT).to(device)
@@ -113,3 +111,18 @@ def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, 
                                                        window_size=window_size, window_overlap=window_overlap,
                                                        loss_at_end=loss_at_end, max_length=max_length)
     return train_loss, train_acc, test_loss, test_acc
+
+
+def predict(model, dataset):
+    dataloader = DataLoader(dataset,
+                            batch_size=1,
+                            shuffle=False,
+                            num_workers=0,
+                            collate_fn=collate_fn)
+    results = {}
+    for test_idx, test_row in enumerate(dataloader):
+        X, p, og_size, id = test_row['Sequence'], test_row['Properties'], test_row['Original-Size'], test_row['ID']
+        y_pred = model(X, p, og_size)
+        results[id] = (y_pred).detach().squeeze().numpy().tolist()
+
+    return results
