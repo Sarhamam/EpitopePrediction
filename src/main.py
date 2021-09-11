@@ -15,7 +15,9 @@ logger = logging.getLogger("EpitopePrediction")
 @click.argument('input_file', type=click.Path(exists=True))
 @click.argument('output_file', type=click.Path(exists=False))
 @click.argument('mode', type=click.Choice(['train', 'predict']))
-@click.option('--weights', type=click.Path(exists=True), default="../resources/weights.pytw")
+@click.option('--weights', type=click.Path(exists=True),
+              help="Path of saved weights created by train mode with the same parameters",
+              default="./resources/weights.pytw")
 @click.option('--rnn_type', type=click.Choice(['LSTM', 'GRU']), help="Type of network to run", default='GRU')
 @click.option('--bidirectional', type=bool, help="Bidirectional RNN", default=True)
 @click.option('--batch_size', type=int, help="Batch size", default=10)
@@ -31,7 +33,8 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--lr', type=click.FloatRange(1e-6, 1e-1, clamp=True), help="Learning rate", default=5e-4)
 @click.option('--numeric_features', type=bool, help="Include numeric features", default=True)
 @click.option('--dont_print', is_flag=True, help="Dont print results to stdout")
-@click.option('--accuracy_report', type=click.Path(exists=False), default="report.csv")
+@click.option('--accuracy_report', type=click.Path(exists=False),
+              help="CSV report containing loss and accuracy per epoch", default="report.csv")
 def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, batch_size, concat_after, window_size,
              window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features,
              dont_print, accuracy_report):
