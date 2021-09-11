@@ -107,7 +107,8 @@ def calculate_accuracy(true_cls, pred_cls):
     ## Current implementation treats a float under 0.5 as 0 and above as 1. We could think of a different method if needed ##
     """
     n = pred_cls.shape[0]
-    pred_cls = pred_cls[:, 1]  # probability of 1
+    if pred_cls.size(1) > 1:
+        pred_cls = pred_cls[:, 1]  # probability of 1
     diff = torch.abs(torch.subtract(true_cls, pred_cls))
     corrects = torch.sum(diff < 0.5)
 
@@ -122,7 +123,8 @@ def recall_precision_fn(pred_cls, true_cls):
     Compares until the end of the shorter vector
     ## Current implementation treats a float under 0.5 as 0 and above as 1. We could think of a different method if needed ##
     """
-    pred_cls = pred_cls[:, 1]  # probability of 1
+    if pred_cls.size(1) > 1:
+        pred_cls = pred_cls[:, 1]  # probability of 1
     true_indices = (true_cls == 1)  # indices where TP should be expected
     TP = sum(pred_cls[true_indices] > 0.5)
     FP = sum(pred_cls > 0.5) - TP  # Total predicted P minus TP
