@@ -93,8 +93,9 @@ def init_model(device, rnn_type, bidirectional, concat_after):
                              concat_after=concat_after,
                              rnn_type=rnn_type,
                              dropout=0.2).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-2)
-    loss_fn = nn.BCELoss().to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.0005)
+    w = torch.as_tensor([1.0, 7.7])  # weight for 0, weight for 1
+    loss_fn = nn.CrossEntropyLoss(weight=w).to(device)
     return model, optimizer, loss_fn
 
 

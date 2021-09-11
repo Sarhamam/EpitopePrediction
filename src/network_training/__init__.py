@@ -18,7 +18,9 @@ MAX_LENGTH = config["NETWORK"].getint("MAX_LENGTH")
 # Train function
 #################
 
-def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, window_size, window_overlap, loss_at_end,
+
+def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, window_size, window_overlap,
+          loss_at_end,
           max_epochs=100,
           max_batches=200):
     avg_train_loss = []
@@ -40,13 +42,14 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
             X, p, y, og_size = batch['Sequence'], batch['Properties'], batch['Tags'], batch['Original-Size']
             og_size = [min(og_size[i], MAX_LENGTH) for i in range(len(og_size))]
 
-            y = y.type(torch.FloatTensor)
+            y = y.type(torch.LongTensor)
             y = y.to(device)
 
-            if loss_at_end == True:
+            if loss_at_end == True and window_size > 0:
                 y_expected, y_pred = run_model_by_slice(device, model, X, p, y, og_size, window_size, window_overlap)
+                y_expected = y_expected.unsqueeze(-1)
                 optimizer.zero_grad()
-                loss = loss_fn(y_pred, y_expected.unsqueeze(-1))
+                loss = loss_fn(y_pred, y_expected)
                 loss.backward()
 
                 # Weight updates
@@ -60,7 +63,11 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                 train_recall += recall
                 train_precision += precision
 
-            else:
+                # print(y_pred[y_expected == 1, 0])
+                # print("min:", min(y_pred[y_expected == 0, 0]))
+                # print("max:", max(y_pred[y_expected == 0, 0]))
+
+            elif window_size > 0:
                 win_shift = window_size - window_overlap
                 n_shifts = int(np.ceil(1.0 * (X.size(0) - window_size) / win_shift))  # need to check
                 for i_shift in range(n_shifts + 1):
@@ -82,6 +89,11 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                     y_pred_W = model(X_W, p_W, size_W)
                     y_expected_W = pack_padded_sequence(y_W.T, size_W, batch_first=True,
                                                         enforce_sorted=False).data.unsqueeze(-1)
+                    y_pred_W = y_pred_W.unsqueeze(-1)
+                    compl = 1 - y_pred_W
+                    y_pred_W = torch.cat((compl, y_pred_W), 1)  # probablity of 0, probablity of 1
+                    y_expected_W = y_expected_W.type(torch.LongTensor)
+
                     loss = loss_fn(y_pred_W, y_expected_W)
 
                     # Weight updates
@@ -96,11 +108,35 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                     train_recall += recall / (n_shifts + 1)
                     train_precision += precision / (n_shifts + 1)
 
+            else:
+                y_pred = model(X, p, og_size)
+                y_expected = pack_padded_sequence(y.T, og_size, batch_first=True,
+                                                  enforce_sorted=False).data.unsqueeze(-1)
+                y_pred = y_pred.unsqueeze(-1)
+                compl = 1 - y_pred
+                y_pred = torch.cat((compl, y_pred), 1)  # probablity of 0, probablity of 1
+                y_expected = y_expected.type(torch.LongTensor)
+
+                optimizer.zero_grad()
+                loss = loss_fn(y_pred, y_expected)
+                loss.backward()
+
+                # Weight updates
+                optimizer.step()
+                train_loss += loss.item()
+
+                # Accuracy, Recall, Precision
+                accuracy = calculate_accuracy(y_expected, y_pred)
+                train_acc += accuracy
+                recall, precision = recall_precision_fn(y_pred, y_expected)
+                train_recall += recall
+                train_precision += precision
+
             j += 1
 
             # For debugging
-            # if batch_idx == max_batches - 1:
-            #     break
+            if batch_idx == max_batches - 1:
+                break
 
         # avg batch metrics after each epoch (j total batches):
         avg_train_loss.append(train_loss / j)
@@ -108,17 +144,16 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
         avg_train_recall.append(train_recall / j)
         avg_train_precision.append(train_precision / j)
 
-        logger.info(f"Epoch #{epoch_idx}, train loss = {train_loss / j:.3f}, train accuracy = {train_acc / j:.3f},"
-                    f" train recall % = {train_recall / j:.1f}, train precision % = {train_precision / j:.1f},"
-                    f" epoch_time={time.time() - epoch_start_time:.1f} sec,"
-                    f" total_time={time.time() - start_time:.1f} sec")
+        logger.info(
+            f"Epoch #{epoch_idx}, train loss = {train_loss / j:.3f}, train accuracy = {train_acc / j:.3f}, train recall % = {train_recall / j:.1f}, train precision % = {train_precision / j:.1f}, epoch_time={time.time() - epoch_start_time:.1f} sec, total_time={time.time() - start_time:.1f} sec")
 
         # test network on the test dataset
         test_loss, test_acc = test(device, model, loss_fn, test_dataset)
         avg_test_loss.append(test_loss)
         avg_test_acc.append(test_acc)
 
-        logger.info(f"\t  test loss = {test_loss:.3f}, test accuracy = {test_acc:.3f}")
+        logger.info(
+            f"\t  test loss = {test_loss:.3f}, test accuracy = {test_acc:.3f}")
 
     np.savetxt("dbg_loss.csv", np.asarray(avg_train_loss), delimiter=",")
 
@@ -141,7 +176,12 @@ def test(device, model, loss_fn, dataset):
 
         # predict
         y_pred = model(X, p, og_size)
+        y_pred = y_pred.unsqueeze(-1)
+        compl = 1 - y_pred
+        y_pred = torch.cat((compl, y_pred), 1)  # probablity of 0, probablity of 1
+
         y_expected = pack_padded_sequence(y.T, og_size, batch_first=True, enforce_sorted=False).data.unsqueeze(-1)
+        y_expected = y_expected.type(torch.LongTensor)
 
         # loss
         loss = loss_fn(y_pred, y_expected)
@@ -186,5 +226,10 @@ def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap):
         ans = model(X[Li:seq_len, i:i + 1], p[Li:seq_len, i:i + 1, :], size_w)
         y_pred = torch.cat((y_pred, ans))
         y_expected = torch.cat((y_expected, y[Li:seq_len, i]))
+
+    y_pred = y_pred.unsqueeze(-1)
+    compl = 1 - y_pred
+    y_pred = torch.cat((compl, y_pred), 1)  # probablity of 0, probablity of 1
+    y_expected = y_expected.type(torch.LongTensor)
 
     return y_expected, y_pred
