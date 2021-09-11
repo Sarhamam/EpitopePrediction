@@ -19,10 +19,9 @@ MAX_LENGTH = config["NETWORK"].getint("MAX_LENGTH")
 #################
 
 
-def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, window_size, window_overlap,
-          loss_at_end,
-          max_epochs=100,
-          max_batches=200):
+def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, window_size, window_overlap, loss_at_end,
+          max_epochs=100,max_batches=200,max_length=10000):
+
     avg_train_loss = []
     avg_train_acc = []
 
@@ -40,12 +39,14 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
         epoch_start_time = time.time()
         for batch_idx, batch in enumerate(train_dataloader):
             X, p, y, og_size = batch['Sequence'], batch['Properties'], batch['Tags'], batch['Original-Size']
-            og_size = [min(og_size[i], MAX_LENGTH) for i in range(len(og_size))]
+            y = y.type(torch.LongTensor).to(device)
 
-            y = y.type(torch.LongTensor)
-            y = y.to(device)
+            og_size = [min(og_size[i], max_length) for i in range(len(og_size))]
+            if (window_size == -1):
+                window_size = max_length
+                window_overlap = 0
 
-            if loss_at_end == True and window_size > 0:
+            if loss_at_end == True:
                 y_expected, y_pred = run_model_by_slice(device, model, X, p, y, og_size, window_size, window_overlap)
                 y_expected = y_expected.unsqueeze(-1)
                 optimizer.zero_grad()
@@ -67,15 +68,15 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                 # print("min:", min(y_pred[y_expected == 0, 0]))
                 # print("max:", max(y_pred[y_expected == 0, 0]))
 
-            elif window_size > 0:
+            else:
                 win_shift = window_size - window_overlap
-                n_shifts = int(np.ceil(1.0 * (X.size(0) - window_size) / win_shift))  # need to check
+                n_shifts = int(np.ceil(1.0 * (max(og_size) - window_size) / win_shift))  # need to check
                 for i_shift in range(n_shifts + 1):
                     bs = range(len(og_size))
                     Li = i_shift * win_shift  # left index
-                    Ri = Li + window_overlap  # right index
-                    Ri = min(Ri, X.size(0))
-                    size_W = [max(min(og_size[i] - Li, window_overlap), 0) for i in bs]
+                    Ri = Li + window_size  # right index
+                    Ri = min(Ri, max(og_size))
+                    size_W = [max(min(og_size[i] - Li, window_size), 0) for i in bs]
                     non_empty = torch.as_tensor(size_W) > 0
                     size_W = torch.as_tensor(size_W)
                     size_W = size_W[non_empty]
@@ -86,13 +87,12 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
 
                     # Forward pass
                     optimizer.zero_grad()
-                    y_pred_W = model(X_W, p_W, size_W)
+                    y_pred_W = model(X_W, p_W, size_W).unsqueeze(-1)
                     y_expected_W = pack_padded_sequence(y_W.T, size_W, batch_first=True,
                                                         enforce_sorted=False).data.unsqueeze(-1)
-                    y_pred_W = y_pred_W.unsqueeze(-1)
                     compl = 1 - y_pred_W
-                    y_pred_W = torch.cat((compl, y_pred_W), 1)  # probablity of 0, probablity of 1
-                    y_expected_W = y_expected_W.type(torch.LongTensor)
+                    y_pred_W = torch.cat((compl, y_pred_W), 1) # probablity of 0, probablity of 1
+                    y_expected_W = y_expected_W.type(torch.LongTensor).to(device)
 
                     loss = loss_fn(y_pred_W, y_expected_W)
 
@@ -108,33 +108,18 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                     train_recall += recall / (n_shifts + 1)
                     train_precision += precision / (n_shifts + 1)
 
-            else:
-                y_pred = model(X, p, og_size)
-                y_expected = pack_padded_sequence(y.T, og_size, batch_first=True,
-                                                  enforce_sorted=False).data.unsqueeze(-1)
-                y_pred = y_pred.unsqueeze(-1)
-                compl = 1 - y_pred
-                y_pred = torch.cat((compl, y_pred), 1)  # probablity of 0, probablity of 1
-                y_expected = y_expected.type(torch.LongTensor)
-
-                optimizer.zero_grad()
-                loss = loss_fn(y_pred, y_expected)
-                loss.backward()
-
-                # Weight updates
-                optimizer.step()
-                train_loss += loss.item()
-
-                # Accuracy, Recall, Precision
-                accuracy = calculate_accuracy(y_expected, y_pred)
-                train_acc += accuracy
-                recall, precision = recall_precision_fn(y_pred, y_expected)
-                train_recall += recall
-                train_precision += precision
+                # Why not like the following?
+                # # Accuracy, Recall, Precision
+                # y_expected = pack_padded_sequence(y.T,og_size, batch_first=True,enforce_sorted=False).data.unsqueeze(-1)
+                # y_pred = model(X,p,og_size)
+                # accuracy = calculate_accuracy(y_expected, y_pred)
+                # train_acc += accuracy
+                # recall,precision = recall_precision_fn(y_pred, y_expected)
+                # train_recall += recall
+                # train_precision += precision
 
             j += 1
 
-            # For debugging
             if batch_idx == max_batches - 1:
                 break
 
@@ -172,7 +157,7 @@ def test(device, model, loss_fn, dataset):
     j = 0
     for test_idx, test_row in enumerate(dataloader):
         X, p, y, og_size = test_row['Sequence'], test_row['Properties'], test_row['Tags'], test_row['Original-Size']
-        y = y.type(torch.FloatTensor).to(device)
+        y = y.type(torch.LongTensor).to(device)
 
         # predict
         y_pred = model(X, p, og_size)

@@ -12,12 +12,15 @@ from utils import config
 from network_training import train
 from utils.network_utils import collate_fn, amino_acids_vocab
 
-logger = logging.getLogger("LSTMNetwork")
+logger = logging.getLogger("RNNNetwork")
 
 # Parameters
-BATCH_SIZE = config["NETWORK"].getint("BATCH_SIZE")
 EMBED_SIZE = config["NETWORK"].getint("EMBED_SIZE")
 NUM_FEATURES = config["NETWORK"].getint("NUM_FEATURES")
+DROPOUT = 0.2
+
+# Remove the following?
+BATCH_SIZE = config["NETWORK"].getint("BATCH_SIZE")
 HIDDEN_DIM = config["NETWORK"].getint("HIDDEN_DIM")
 MAX_BATCHES = config["NETWORK"].getint("MAX_BATCHES")
 MAX_LENGTH = config["NETWORK"].getint("MAX_LENGTH")
@@ -35,10 +38,8 @@ class EpitopePredictor(nn.Module):
         super().__init__()
         self.device = device
         self.concat_after = concat_after
-        ############################################
-        # embedding layer  - CHANGE embed size
+        # embedding layer
         self.embedding = nn.Embedding(input_size, embed_size)
-        #############################################
         # RNN layer
         if (rnn_type == 'LSTM'):
             f_RNN = nn.LSTM
@@ -48,7 +49,6 @@ class EpitopePredictor(nn.Module):
             sys.exit('Invalid RNN model. Set RNN to LSTM or GRU')
 
         self.RNN = f_RNN(input_size=embed_size + numeric_feature_dim * (not concat_after),
-                         # not sure, perhaps embed_size
                          hidden_size=hidden_dim,
                          num_layers=n_layers,
                          bidirectional=bidirectional,
@@ -81,27 +81,26 @@ class EpitopePredictor(nn.Module):
         return self.activation(self.linear_test(dropout))
 
 
-def init_model(device, rnn_type, bidirectional, concat_after):
+def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features=True):
     # instantiate the model
     model = EpitopePredictor(input_size=len(amino_acids_vocab),
                              embed_size=EMBED_SIZE,
-                             numeric_feature_dim=NUM_FEATURES,
-                             hidden_dim=HIDDEN_DIM,
-                             n_layers=2,
+                             numeric_feature_dim=(NUM_FEATURES if numeric_features else 0),
+                             hidden_dim=hidden_dim,
+                             n_layers=n_layers,
                              bidirectional=bidirectional,
                              device=device,
                              concat_after=concat_after,
                              rnn_type=rnn_type,
-                             dropout=0.2).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=0.0005)
-    w = torch.as_tensor([1.0, 7.7])  # weight for 0, weight for 1
+                             dropout=DROPOUT).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=lr) #lr=0.0005
+    w = torch.as_tensor([1.0, 7.7]) # weight for 0, weight for 1
     loss_fn = nn.CrossEntropyLoss(weight=w).to(device)
     return model, optimizer, loss_fn
 
 
-def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, epochs, batch_size, window_size,
-                window_overlap,
-                loss_at_end):
+def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, epochs, batch_size, window_size, window_overlap,
+                loss_at_end,max_batches,max_length):
     # Create train dataloader
     dataloader = DataLoader(train_dataset,
                             batch_size=batch_size,
@@ -112,5 +111,5 @@ def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, 
     train_loss, train_acc, test_loss, test_acc = train(device, model, optimizer, loss_fn, dataloader, test_dataset,
                                                        max_epochs=epochs, max_batches=MAX_BATCHES,
                                                        window_size=window_size, window_overlap=window_overlap,
-                                                       loss_at_end=loss_at_end)
+                                                       loss_at_end=loss_at_end, max_length=max_length)
     return train_loss, train_acc, test_loss, test_acc
