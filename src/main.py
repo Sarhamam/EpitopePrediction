@@ -6,7 +6,7 @@ import logging
 
 from data_enricher import data_enricher
 from network import init_model, train_model, predict
-from utils.network_utils import get_device, create_dataset
+from utils.network_utils import get_device, create_dataset, print_results
 
 logger = logging.getLogger("EpitopePrediction")
 
@@ -20,9 +20,9 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--bidirectional', type=bool, help="Bidirectional RNN", default=True)
 @click.option('--batch_size', type=int, help="Batch size", default=10)
 @click.option('--concat_after', type=bool, help="Concat numerical properties with RNN output", default=False)
-@click.option('--window_size', type=int, help="Window size", default=-1)
+@click.option('--window_size', type=int, help="Window size", default=256)
 @click.option('--window_overlap', type=int, help="Window overlap", default=0)
-@click.option('--loss_at_end', type=bool, help="Calculates loss after batch (instead of after window)", default=True)
+@click.option('--loss_at_end', type=bool, help="Calculates loss after batch (instead of after window)", default=False)
 @click.option('--epochs', type=int, help="Number of epochs to train", default=10)
 @click.option('--max_batches', type=int, help="Number of maximum batches (-1 is unlimited)", default=-1)
 @click.option('--max_length', type=int, help="Max truncated sequences length", default=10000)
@@ -30,9 +30,10 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--n_layers', type=int, help="RNN number of layers", default=2)
 @click.option('--lr', type=click.FloatRange(1e-6, 1e-1, clamp=True), help="Learning rate", default=5e-4)
 @click.option('--numeric_features', type=bool, help="Include numeric features", default=True)
-
+@click.option('--dont_print', is_flag=True, help="Dont print results to stdout")
 def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, batch_size, concat_after, window_size,
-             window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features):
+             window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features,
+             dont_print):
     try:
         parsed_data = data_enricher(input_file)
         with open("./in.parsed", "w") as f:
@@ -49,13 +50,16 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
     else:
         logger.info('Using device: %s\n', device)
 
-    model, optimizer, loss_fn = init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features)
+    model, optimizer, loss_fn = init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr,
+                                           numeric_features)
     if mode == 'train':
         model.train()
         train_data, test_data = create_dataset("./in.parsed")
-        train_loss, train_acc, test_loss, test_acc = train_model(device, model, optimizer, loss_fn, train_data, test_data,
-                                                                epochs, batch_size, window_size, window_overlap, loss_at_end,
-                                                                max_batches, max_length)
+        train_loss, train_acc, test_loss, test_acc = train_model(device, model, optimizer, loss_fn, train_data,
+                                                                 test_data,
+                                                                 epochs, batch_size, window_size, window_overlap,
+                                                                 loss_at_end,
+                                                                 max_batches, max_length)
         logger.info("Training complete. Average training loss is %s", train_loss[-1])
         logger.info("Saving weights to %s", output_file)
         torch.save(model.state_dict(), output_file)
@@ -67,16 +71,8 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
         with open(output_file, "w") as f:
             json.dump(results, f)
 
-        for idx, d in parsed_data.items():
-            print(d["ID"])
-            fg = lambda text, color: "\33[38;5;" + str(color) + "m" + text + "\33[0m"
-            probabilities = results[d["ID"]]
-            colored_result = ""
-            for i in range(len(probabilities)):
-                color = int(88 * (1 - probabilities[i]) + 124 * (probabilities[i]))
-                colored_result += fg(d["Sequence"][i], color)
-
-            print(colored_result)
+        if not dont_print:
+            print_results(parsed_data, results)
 
 
 if __name__ == '__main__':

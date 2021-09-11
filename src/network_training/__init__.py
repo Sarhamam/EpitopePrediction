@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pack_padded_sequence
 
 from utils import config
-from utils.network_utils import calculate_accuracy, recall_precision_fn, collate_fn
+from utils.network_utils import calculate_accuracy, recall_precision_fn, collate_fn, prepare_for_crossentropy_loss
 
 logger = logging.getLogger("NetworkTraining")
 
@@ -20,8 +20,7 @@ MAX_LENGTH = config["NETWORK"].getint("MAX_LENGTH")
 
 
 def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, window_size, window_overlap, loss_at_end,
-          max_epochs=100,max_batches=200,max_length=10000):
-
+          max_epochs=100, max_batches=200, max_length=10000):
     avg_train_loss = []
     avg_train_acc = []
 
@@ -87,11 +86,10 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
 
                     # Forward pass
                     optimizer.zero_grad()
-                    y_pred_W = model(X_W, p_W, size_W).unsqueeze(-1)
+                    y_pred_W = model(X_W, p_W, size_W)
                     y_expected_W = pack_padded_sequence(y_W.T, size_W, batch_first=True,
                                                         enforce_sorted=False).data.unsqueeze(-1)
-                    compl = 1 - y_pred_W
-                    y_pred_W = torch.cat((compl, y_pred_W), 1) # probablity of 0, probablity of 1
+                    y_pred_W = prepare_for_crossentropy_loss(y_pred_W)
                     y_expected_W = y_expected_W.type(torch.LongTensor).to(device)
 
                     loss = loss_fn(y_pred_W, y_expected_W)
@@ -161,9 +159,7 @@ def test(device, model, loss_fn, dataset):
 
         # predict
         y_pred = model(X, p, og_size)
-        y_pred = y_pred.unsqueeze(-1)
-        compl = 1 - y_pred
-        y_pred = torch.cat((compl, y_pred), 1)  # probablity of 0, probablity of 1
+        y_pred = prepare_for_crossentropy_loss(y_pred)
 
         y_expected = pack_padded_sequence(y.T, og_size, batch_first=True, enforce_sorted=False).data.unsqueeze(-1)
         y_expected = y_expected.type(torch.LongTensor)
@@ -212,9 +208,7 @@ def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap):
         y_pred = torch.cat((y_pred, ans))
         y_expected = torch.cat((y_expected, y[Li:seq_len, i]))
 
-    y_pred = y_pred.unsqueeze(-1)
-    compl = 1 - y_pred
-    y_pred = torch.cat((compl, y_pred), 1)  # probablity of 0, probablity of 1
+    y_pred = prepare_for_crossentropy_loss(y_pred)
     y_expected = y_expected.type(torch.LongTensor)
 
     return y_expected, y_pred

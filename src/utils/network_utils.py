@@ -130,3 +130,40 @@ def recall_precision_fn(pred_cls, true_cls):
     recall = torch.nan_to_num(TP / (TP + FN))
     precision = torch.nan_to_num(TP / (TP + FP))
     return 100 * recall.item(), 100 * precision.item()
+
+
+# Auxiliary functions
+#####################
+
+def prepare_for_crossentropy_loss(tensor):
+    """ Turns 1D Tensor of probabilities to 2D Tensor of probabilites and complements"""
+    tensor = tensor.unsqueeze(-1)
+    compl = 1 - tensor
+    return torch.cat((compl, tensor), 1)  # probablity of 0, probablity of 1
+
+
+def print_results(parsed_data, results):
+    LOWEST_COLOR = 88
+    HIGHEST_COLOR = 123
+    fg = lambda text, color: "\33[38;5;" + str(color) + "m" + text + "\33[0m"
+    print("Probabilities:")
+    colors = [118, 112, 106, 100, 94, 88]
+    probs = ""
+    for i in range(6):
+        color = colors[i]
+        probs += " " + fg("{:.2f}".format(i / 6.0), color)
+
+    print(probs)
+
+    for idx, d in parsed_data.items():
+        print(d["ID"])
+        probabilities = results[d["ID"]]
+        colored_result = ""
+        for i in range(len(probabilities)):
+            idx = int(probabilities[i] * 6)
+            if idx > 5:
+                idx = 5
+            color = colors[idx]
+            colored_result += fg(d["Sequence"][i], color)
+
+        print(colored_result)
