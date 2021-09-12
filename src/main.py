@@ -1,9 +1,9 @@
+import os
 import sys
 import json
 import click
 import torch
 import logging
-import os
 from shutil import copyfile
 
 from data_enricher import data_enricher
@@ -23,6 +23,7 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--rnn_type', type=click.Choice(['LSTM', 'GRU']), help="Type of network to run", default='GRU')
 @click.option('--bidirectional', type=bool, help="Bidirectional RNN", default=True)
 @click.option('--batch_size', type=int, help="Batch size", default=10)
+@click.option('--embed_size', type=int, help="Embedding size", default=30)
 @click.option('--concat_after', type=bool, help="Concat numerical properties with RNN output", default=False)
 @click.option('--window_size', type=int, help="Window size", default=0)
 @click.option('--window_overlap', type=int, help="Window overlap", default=0)
@@ -48,7 +49,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
             parsed_data = data_enricher(input_file)
             with open("./in.parsed", "w") as f:
                 json.dump(parsed_data, f)
-        if file_type == '.tsv':           
+        if file_type == '.tsv':
             copyfile(input_file,"./in.parsed")
 
     except Exception:
@@ -70,7 +71,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
     if mode == 'train':
         if deterministic:
             # make reproducible
-            torch.backends.cudnn.deterministic = True 
+            torch.backends.cudnn.deterministic = True
             torch.manual_seed(1)
         model.train()
         model.to(device)

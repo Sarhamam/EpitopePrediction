@@ -17,7 +17,7 @@ logger = logging.getLogger("RNNNetwork")
 # Parameters
 EMBED_SIZE = config["NETWORK"].getint("EMBED_SIZE")
 NUM_FEATURES = config["NETWORK"].getint("NUM_FEATURES")
-DROPOUT = 0.2
+DROPOUT = 0.15
 
 # Remove the following?
 BATCH_SIZE = config["NETWORK"].getint("BATCH_SIZE")
@@ -95,9 +95,9 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
                              concat_after=concat_after,
                              rnn_type=rnn_type,
                              dropout=DROPOUT).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)  # lr=0.0005
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     if weighted_loss:
-        w = torch.as_tensor([1.0, 7.7])  # weight for 0, weight for 1
+        w = torch.as_tensor([1.0, 13.0])  # weight for 0, weight for 1
         loss_fn = nn.CrossEntropyLoss(weight=w).to(device)
     else:
         loss_fn = nn.BCELoss().to(device)
