@@ -101,11 +101,11 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
 
 
 def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, epochs, batch_size, window_size,
-                window_overlap, loss_at_end, max_batches, max_length, accuracy_report):
+                window_overlap, loss_at_end, max_batches, max_length, accuracy_report, shuffle=True):
     # Create train dataloader
     dataloader = DataLoader(train_dataset,
                             batch_size=batch_size,
-                            shuffle=True,
+                            shuffle=shuffle,
                             num_workers=0,
                             collate_fn=collate_fn)
 
