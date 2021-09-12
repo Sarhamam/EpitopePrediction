@@ -145,8 +145,8 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
         torch.save(model.state_dict(), f"./train_results/model_{epoch_idx + 1}")
         torch.save(optimizer.state_dict(), f"./train_results/optimizer_{epoch_idx + 1}")
         csvwriter.writerow(
-            [epoch_idx + 1, train_loss / j, train_acc.item() / j, train_recall / j, train_precision / j, epoch_time,
-             total_time, test_loss, test_acc, test_recall, test_precision])
+            [epoch_idx+1, train_loss / j, train_acc.item() / j, train_recall / j, train_precision / j, epoch_time,
+             total_time, test_loss, test_acc.item(), test_recall, test_precision])
         logger.info(
             f"\t  test loss = {test_loss:.3f}, test accuracy = {test_acc:.3f}, test_time={time.time() - test_start_time:.1f} sec")
 
