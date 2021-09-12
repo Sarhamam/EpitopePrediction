@@ -38,11 +38,11 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--accuracy_report', type=click.Path(exists=False),
               help="CSV report containing loss and accuracy per epoch", default="report.csv")
 @click.option('--weighted_loss', type=bool, help="Use weighted loss function instead of BCE", default=False)
-@click.option('--no_shuffle', type=bool, help="Don't shuffle training data set (for debuggin)", default=False)
+@click.option('--deterministic', type=bool, help="Deterministic with no shuffle of training data set (for debuggin)", default=False)
 
 def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, batch_size, concat_after, window_size,
              window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features,
-             dont_print, accuracy_report,weighted_loss,no_shuffle):
+             dont_print, accuracy_report,weighted_loss,deterministic):
     try:
         _, file_type = os.path.splitext(input_file)
         if file_type == '.fasta':
@@ -64,21 +64,21 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
         logger.info('Using device: %s\n', device)
 
     model, optimizer, loss_fn = init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr,
-                                           numeric_features, weighted_loss)
+                                           numeric_features, weighted_loss, deterministic)
     if window_size == 0:
         window_size = -1
     if mode == 'train':
-        if no_shuffle:
+        if deterministic:
             # make reproducible
             torch.backends.cudnn.deterministic = True 
             torch.manual_seed(1)
         model.train()
-        train_data, test_data = create_dataset("./in.parsed")
+        train_data, test_data = create_dataset("./in.parsed", deterministic=deterministic)
         train_loss, train_acc, test_loss, test_acc = train_model(device, model, optimizer, loss_fn, train_data,
                                                                  test_data,
                                                                  epochs, batch_size, window_size, window_overlap,
                                                                  loss_at_end,
-                                                                 max_batches, max_length, accuracy_report, not(no_shuffle))
+                                                                 max_batches, max_length, accuracy_report, deterministic)
         logger.info("Training complete. Average training loss is %s", train_loss[-1])
         logger.info("Saving weights to %s", output_file)
         torch.save(model.state_dict(), output_file)
