@@ -40,7 +40,7 @@ logger = logging.getLogger("EpitopePrediction")
               help="CSV report containing loss and accuracy per epoch", default="report.csv")
 @click.option('--weighted_loss', type=bool, help="Use weighted loss function instead of BCE", default=False)
 @click.option('--deterministic', type=bool, help="Deterministic with no shuffle of training data set (for debugging)", default=False)
-def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, batch_size, concat_after, window_size,
+def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, batch_size, embed_size, concat_after, window_size,
              window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features,
              dont_print, accuracy_report,weighted_loss,deterministic):
     try:
