@@ -95,6 +95,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
 
         if not dont_print:
             print_results(parsed_data, results)
+            plot_results(parsed_data, results)
 
 
 if __name__ == '__main__':

@@ -171,3 +171,24 @@ def print_results(parsed_data, results):
             colored_result += fg(d["Sequence"][i], color)
 
         print(colored_result)
+
+def plot_results(parsed_data, results):
+
+    for idx, d in parsed_data.items():
+        print(d["ID"])
+        probabilities = results[d["ID"]]
+        x = list(range(len(res)))
+
+        fig, ax = plt.subplots(1)
+        ax.scatter(x, probabilities)
+        ax.plot([0,x[-1]],[0.5, 0.5],'g--') # plot 50% line
+        ax.legend(['50% probability', 'Prediction'], loc='best')
+
+        ax.set_title(f'Epitope prediction - ID {d["ID"]}')
+        ax.set_xlabel('Amino acid number')
+        ax.set_ylabel('Probability')
+
+        ax.set_xlim(0,x[-1])
+        ax.set_ylim(0,1)
+
+        plt.savefig(f'./EpitopePrediction_ID_{d["ID"]}.png')
