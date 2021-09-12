@@ -80,8 +80,8 @@ class EpitopePredictor(nn.Module):
         return self.activation(self.linear_test(dropout))
 
 
-def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features=True, weighted_loss=False, deterministic=False):
-    
+def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features=True,
+               weighted_loss=False, deterministic=False):
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.manual_seed(1)
@@ -106,11 +106,10 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
 
 def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, epochs, batch_size, window_size,
                 window_overlap, loss_at_end, max_batches, max_length, accuracy_report, deterministic=False):
-                
     # Create train dataloader
     dataloader = DataLoader(train_dataset,
                             batch_size=batch_size,
-                            shuffle=not(deterministic),
+                            shuffle=not (deterministic),
                             num_workers=0,
                             collate_fn=collate_fn)
 
@@ -129,9 +128,10 @@ def predict(model, dataset):
                             num_workers=0,
                             collate_fn=collate_fn)
     results = {}
-    for test_idx, test_row in enumerate(dataloader):
-        X, p, og_size, id = test_row['Sequence'], test_row['Properties'], test_row['Original-Size'], test_row['ID']
-        y_pred = model(X, p, og_size)
-        results[id] = (y_pred).detach().squeeze().numpy().tolist()
+    with torch.no_grad():
+        for test_idx, test_row in enumerate(dataloader):
+            X, p, og_size, id = test_row['Sequence'], test_row['Properties'], test_row['Original-Size'], test_row['ID']
+            y_pred = model(X, p, og_size)
+            results[id] = (y_pred).detach().squeeze().to('cpu').numpy().tolist()
 
     return results

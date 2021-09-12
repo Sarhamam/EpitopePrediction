@@ -1,5 +1,5 @@
-import csv
 import os
+import csv
 import time
 import torch
 import logging
@@ -23,7 +23,6 @@ MAX_LENGTH = config["NETWORK"].getint("MAX_LENGTH")
 
 def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, window_size, window_overlap, loss_at_end,
           accuracy_report, max_epochs=100, max_batches=200, max_length=10000, deterministic=False):
-    
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.manual_seed(1)
@@ -57,7 +56,8 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                 window_overlap = 0
 
             if loss_at_end == True:
-                y_expected, y_pred = run_model_by_slice(device, model, X, p, y, og_size, window_size, window_overlap, not(loss_fn.weight is None) )
+                y_expected, y_pred = run_model_by_slice(device, model, X, p, y, og_size, window_size, window_overlap,
+                                                        not (loss_fn.weight is None))
                 y_expected = y_expected.unsqueeze(-1)
                 optimizer.zero_grad()
                 loss = loss_fn(y_pred, y_expected)
@@ -100,7 +100,7 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                     y_pred_W = model(X_W, p_W, size_W)
                     y_expected_W = pack_padded_sequence(y_W.T, size_W, batch_first=True,
                                                         enforce_sorted=False).data.unsqueeze(-1)
-                    if not(loss_fn.weight is None):
+                    if not (loss_fn.weight is None):
                         y_pred_W = prepare_for_crossentropy_loss(y_pred_W)
                         y_expected_W = y_expected_W.type(torch.LongTensor).to(device)
 
@@ -130,7 +130,7 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
         avg_train_precision.append(train_precision / j)
         epoch_time = time.time() - epoch_start_time
         total_time = time.time() - start_time
-        logger.info(f"Epoch #{epoch_idx+1}, train loss = {train_loss / j:.3f}, train accuracy = {train_acc / j:.3f},"
+        logger.info(f"Epoch #{epoch_idx + 1}, train loss = {train_loss / j:.3f}, train accuracy = {train_acc / j:.3f},"
                     f" train recall % = {train_recall / j:.1f}, train precision % = {train_precision / j:.1f},"
                     f" epoch_time={epoch_time:.1f} sec, total_time={total_time:.1f} sec")
 
@@ -142,12 +142,13 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
         # Save each epoch's weights, accuracy loss and precision
         if not os.path.exists("train_results"):
             os.mkdir("train_results")
-        torch.save(model.state_dict(), f"./train_results/weights_{epoch_idx+1}")
+        torch.save(model.state_dict(), f"./train_results/model_{epoch_idx + 1}")
+        torch.save(optimizer.state_dict(), f"./train_results/optimizer_{epoch_idx + 1}")
         csvwriter.writerow(
-            [epoch_idx+1, train_loss / j, train_acc.item() / j, train_recall / j, train_precision / j, epoch_time,
+            [epoch_idx + 1, train_loss / j, train_acc.item() / j, train_recall / j, train_precision / j, epoch_time,
              total_time, test_loss, test_acc, test_recall, test_precision])
         logger.info(
-            f"\t  test loss = {test_loss:.3f}, test accuracy = {test_acc:.3f}, test_time={time.time()-test_start_time:.1f} sec")
+            f"\t  test loss = {test_loss:.3f}, test accuracy = {test_acc:.3f}, test_time={time.time() - test_start_time:.1f} sec")
 
     np.savetxt("total_loss.csv", np.asarray(avg_train_loss), delimiter=",")
 
@@ -166,39 +167,40 @@ def test(device, model, loss_fn, dataset):
     test_recall = 0
     test_precision = 0
     j = 0
-    for test_idx, test_row in enumerate(dataloader):
-        X, p, y, og_size = test_row['Sequence'], test_row['Properties'], test_row['Tags'], test_row['Original-Size']
-        y = y.type(torch.FloatTensor).to(device)
+    with torch.no_grad():
+        for test_idx, test_row in enumerate(dataloader):
+            X, p, y, og_size = test_row['Sequence'], test_row['Properties'], test_row['Tags'], test_row['Original-Size']
+            y = y.type(torch.FloatTensor).to(device)
 
-        # predict
-        y_pred = model(X, p, og_size)
-        y_expected = pack_padded_sequence(y.T, og_size, batch_first=True, enforce_sorted=False).data.unsqueeze(-1)
+            # predict
+            y_pred = model(X, p, og_size)
+            y_expected = pack_padded_sequence(y.T, og_size, batch_first=True, enforce_sorted=False).data.unsqueeze(-1)
 
-        if not(loss_fn.weight is None):
-            y_pred = prepare_for_crossentropy_loss(y_pred)
-            y_expected = y_expected.type(torch.LongTensor).to(device)
+            if not (loss_fn.weight is None):
+                y_pred = prepare_for_crossentropy_loss(y_pred)
+                y_expected = y_expected.type(torch.LongTensor).to(device)
 
-        # loss
-        loss = loss_fn(y_pred, y_expected)
-        loss = loss.item()
-        test_loss += loss
+            # loss
+            loss = loss_fn(y_pred, y_expected)
+            loss = loss.item()
+            test_loss += loss
 
-        # Accuracy
-        accuracy = calculate_accuracy(y_expected, y_pred)
-        test_acc += accuracy
-        recall, precision = recall_precision_fn(y_pred, y_expected)
-        test_recall += recall
-        test_precision += precision
+            # Accuracy
+            accuracy = calculate_accuracy(y_expected, y_pred)
+            test_acc += accuracy
+            recall, precision = recall_precision_fn(y_pred, y_expected)
+            test_recall += recall
+            test_precision += precision
 
-        j += 1
+            j += 1
 
-    return test_loss / j, test_acc / j, test_recall / j, test_precision / j
+        return test_loss / j, test_acc / j, test_recall / j, test_precision / j
 
 
 # Auxiliary functions
 #####################
 
-def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap,weighted_loss):
+def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap, weighted_loss):
     win_shift = win_size - win_overlap
     y_pred = torch.empty(0, device=device)
     y_expected = torch.empty(0, device=device)
@@ -221,7 +223,7 @@ def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap,we
         ans = model(X[Li:seq_len, i:i + 1], p[Li:seq_len, i:i + 1, :], size_w)
         y_pred = torch.cat((y_pred, ans))
         y_expected = torch.cat((y_expected, y[Li:seq_len, i]))
-    
+
     if weighted_loss:
         y_pred = prepare_for_crossentropy_loss(y_pred)
         y_expected = y_expected.type(torch.LongTensor).to(device)
