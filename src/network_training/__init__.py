@@ -22,7 +22,12 @@ MAX_LENGTH = config["NETWORK"].getint("MAX_LENGTH")
 
 
 def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, window_size, window_overlap, loss_at_end,
-          accuracy_report, max_epochs=100, max_batches=200, max_length=10000):
+          accuracy_report, max_epochs=100, max_batches=200, max_length=10000, deterministic=False):
+    
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.manual_seed(1)
+
     avg_train_loss = []
     avg_train_acc = []
 

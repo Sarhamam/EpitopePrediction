@@ -80,8 +80,12 @@ class EpitopePredictor(nn.Module):
         return self.activation(self.linear_test(dropout))
 
 
-def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features=True, weighted_loss=False):
-    # instantiate the model
+def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features=True, weighted_loss=False, deterministic=False):
+    
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.manual_seed(1)
+
     model = EpitopePredictor(input_size=len(amino_acids_vocab),
                              embed_size=EMBED_SIZE,
                              numeric_feature_dim=(NUM_FEATURES if numeric_features else 0),
@@ -93,7 +97,7 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
                              dropout=DROPOUT).to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)  # lr=0.0005
     if weighted_loss:
-        w = torch.as_tensor([1.0, 1.0])  # weight for 0, weight for 1
+        w = torch.as_tensor([1.0, 7.7])  # weight for 0, weight for 1
         loss_fn = nn.CrossEntropyLoss(weight=w).to(device)
     else:
         loss_fn = nn.BCELoss().to(device)
@@ -101,11 +105,12 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
 
 
 def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, epochs, batch_size, window_size,
-                window_overlap, loss_at_end, max_batches, max_length, accuracy_report, shuffle=True):
+                window_overlap, loss_at_end, max_batches, max_length, accuracy_report, deterministic=False):
+                
     # Create train dataloader
     dataloader = DataLoader(train_dataset,
                             batch_size=batch_size,
-                            shuffle=shuffle,
+                            shuffle=not(deterministic),
                             num_workers=0,
                             collate_fn=collate_fn)
 
@@ -113,7 +118,7 @@ def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, 
                                                        max_epochs=epochs, max_batches=max_batches,
                                                        window_size=window_size, window_overlap=window_overlap,
                                                        loss_at_end=loss_at_end, max_length=max_length,
-                                                       accuracy_report=accuracy_report)
+                                                       accuracy_report=accuracy_report, deterministic=deterministic)
     return train_loss, train_acc, test_loss, test_acc
 
 

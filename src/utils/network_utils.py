@@ -36,7 +36,9 @@ class AminoAcidDataset(Dataset):
 # Dataset functions
 ##################
 
-def create_dataset(path, train_test_ratio=0.7, predict=False):
+def create_dataset(path, train_test_ratio=0.7, predict=False, deterministic=False):
+    if deterministic:
+        torch.manual_seed(1)
     dataset = AminoAcidDataset(path)
     if predict:
         return dataset
