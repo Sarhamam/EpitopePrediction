@@ -1,9 +1,9 @@
+import os
 import sys
 import json
 import click
 import torch
 import logging
-import os
 from shutil import copyfile
 
 from data_enricher import data_enricher
@@ -23,6 +23,7 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--rnn_type', type=click.Choice(['LSTM', 'GRU']), help="Type of network to run", default='GRU')
 @click.option('--bidirectional', type=bool, help="Bidirectional RNN", default=True)
 @click.option('--batch_size', type=int, help="Batch size", default=10)
+@click.option('--embed_size', type=int, help="Embedding size", default=30)
 @click.option('--concat_after', type=bool, help="Concat numerical properties with RNN output", default=False)
 @click.option('--window_size', type=int, help="Window size", default=0)
 @click.option('--window_overlap', type=int, help="Window overlap", default=0)
@@ -38,8 +39,7 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--accuracy_report', type=click.Path(exists=False),
               help="CSV report containing loss and accuracy per epoch", default="report.csv")
 @click.option('--weighted_loss', type=bool, help="Use weighted loss function instead of BCE", default=False)
-@click.option('--deterministic', type=bool, help="Deterministic with no shuffle of training data set (for debuggin)", default=False)
-
+@click.option('--deterministic', type=bool, help="Deterministic with no shuffle of training data set (for debugging)", default=False)
 def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, batch_size, concat_after, window_size,
              window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features,
              dont_print, accuracy_report,weighted_loss,deterministic):
@@ -49,7 +49,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
             parsed_data = data_enricher(input_file)
             with open("./in.parsed", "w") as f:
                 json.dump(parsed_data, f)
-        if file_type == '.tsv':           
+        if file_type == '.tsv':
             copyfile(input_file,"./in.parsed")
 
     except Exception:
@@ -65,14 +65,16 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
 
     model, optimizer, loss_fn = init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr,
                                            numeric_features, weighted_loss, deterministic)
+    loss_fn.to(device)
     if window_size == 0:
         window_size = -1
     if mode == 'train':
         if deterministic:
             # make reproducible
-            torch.backends.cudnn.deterministic = True 
+            torch.backends.cudnn.deterministic = True
             torch.manual_seed(1)
         model.train()
+        model.to(device)
         train_data, test_data = create_dataset("./in.parsed", deterministic=deterministic)
         train_loss, train_acc, test_loss, test_acc = train_model(device, model, optimizer, loss_fn, train_data,
                                                                  test_data,
@@ -84,6 +86,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
         torch.save(model.state_dict(), output_file)
     else:  # Predict mode
         model.load_state_dict(torch.load(weights))
+        model.to(device)
         model.eval()
         test_data = create_dataset("./in.parsed", predict=True)
         results = predict(model, test_data)
