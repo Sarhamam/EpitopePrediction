@@ -18,8 +18,10 @@ PYTHONPATH=/home/iscb/wolfson/bio3d_ws_2021b/sarhamam/project/src:$PYTHONPATH
 ```
 ### Google Collab
 
+To run easily on Google Collab, copy `Epitope_project_template.ipynb` to your collab notebook
+Make sure to fill the appropriate parameters according to the examples in the notebook.
 
-### Outside of TAU Nova Server
+### Portable
 
 Using python version `3.7.10` run
 
