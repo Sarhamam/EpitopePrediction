@@ -15,19 +15,8 @@ from utils.network_utils import collate_fn, amino_acids_vocab, get_device
 logger = logging.getLogger("RNNNetwork")
 
 # Parameters
-EMBED_SIZE = config["NETWORK"].getint("EMBED_SIZE")
 NUM_FEATURES = config["NETWORK"].getint("NUM_FEATURES")
 DROPOUT = 0.15
-
-# Remove the following?
-BATCH_SIZE = config["NETWORK"].getint("BATCH_SIZE")
-HIDDEN_DIM = config["NETWORK"].getint("HIDDEN_DIM")
-MAX_BATCHES = config["NETWORK"].getint("MAX_BATCHES")
-MAX_LENGTH = config["NETWORK"].getint("MAX_LENGTH")
-
-
-# Create global vocabulary
-##########################
 
 
 class EpitopePredictor(nn.Module):
@@ -80,7 +69,8 @@ class EpitopePredictor(nn.Module):
         return self.activation(self.linear_test(dropout))
 
 
-def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features=True,
+def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, embed_size,
+               numeric_features=True,
                weighted_loss=False, deterministic=False):
     """ Initializes the model with the params given by the user"""
     if deterministic:
@@ -88,7 +78,7 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
         torch.manual_seed(1)
 
     model = EpitopePredictor(input_size=len(amino_acids_vocab),
-                             embed_size=EMBED_SIZE,
+                             embed_size=embed_size,
                              numeric_feature_dim=(NUM_FEATURES if numeric_features else 0),
                              hidden_dim=hidden_dim,
                              n_layers=n_layers,

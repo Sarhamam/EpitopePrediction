@@ -39,10 +39,12 @@ logger = logging.getLogger("EpitopePrediction")
 @click.option('--accuracy_report', type=click.Path(exists=False),
               help="CSV report containing loss and accuracy per epoch", default="report.csv")
 @click.option('--weighted_loss', type=bool, help="Use weighted loss function instead of BCE", default=False)
-@click.option('--deterministic', type=bool, help="Deterministic with no shuffle of training data set (for debugging)", default=False)
-def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, batch_size, embed_size, concat_after, window_size,
+@click.option('--deterministic', type=bool, help="Deterministic with no shuffle of training data set (for debugging)",
+              default=False)
+def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, batch_size, embed_size, concat_after,
+             window_size,
              window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features,
-             dont_print, accuracy_report,weighted_loss,deterministic):
+             dont_print, accuracy_report, weighted_loss, deterministic):
     try:
         parsed_data = None
         _, file_type = os.path.splitext(input_file)
@@ -51,7 +53,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
             with open("./in.parsed", "w") as f:
                 json.dump(parsed_data, f)
         if file_type == '.tsv':
-            copyfile(input_file,"./in.parsed")
+            copyfile(input_file, "./in.parsed")
 
     except Exception:
         message = "Failed parsing input file. Please make sure the file is a proper FASTA file."
@@ -65,7 +67,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
         logger.info('Using device: %s\n', device)
 
     model, optimizer, loss_fn = init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr,
-                                           numeric_features, weighted_loss, deterministic)
+                                           numeric_features, weighted_loss, deterministic, embed_size=embed_size)
     loss_fn.to(device)
     if window_size == 0:
         window_size = -1
@@ -81,7 +83,8 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
                                                                  test_data,
                                                                  epochs, batch_size, window_size, window_overlap,
                                                                  loss_at_end,
-                                                                 max_batches, max_length, accuracy_report, deterministic)
+                                                                 max_batches, max_length, accuracy_report,
+                                                                 deterministic)
         logger.info("Training complete. Average training loss is %s", train_loss[-1])
         logger.info("Saving weights to %s", output_file)
         model.to('cpu')
