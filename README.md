@@ -17,6 +17,8 @@ conda activate /home/iscb/wolfson/bio3d_ws_2021b/sarhamam/venv/envs
 set PYTHONPATH=/home/iscb/wolfson/bio3d_ws_2021b/sarhamam/project/src
 ```
 In case of a permission error, you will have to install conda and the requirements as explained in the Portable section.
+If you recieve `Bad ! arg selector` error - you must install conda properly in your university account.
+You can also try using `/home/iscb/wolfson/bio3d_ws_2021b/sarhamam/venv/envs/bin/python` instead of `python` command. (In each of the examples below.)
 ### Google Collab
 
 To run easily on Google Collab, copy `Epitope_project_template.ipynb` to your collab notebook
