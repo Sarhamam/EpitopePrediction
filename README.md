@@ -14,8 +14,9 @@ source /home/iscb/wolfson/bio3d_ws_2021b/sarhamam/venv/etc/profile.d/conda.csh
 # Activate the conda environment with the requirements installed, or create your own.
 conda activate /home/iscb/wolfson/bio3d_ws_2021b/sarhamam/venv/envs
 # Add the source directory to your PYTHONPATH
-PYTHONPATH=/home/iscb/wolfson/bio3d_ws_2021b/sarhamam/project/src:$PYTHONPATH
+set PYTHONPATH=/home/iscb/wolfson/bio3d_ws_2021b/sarhamam/project/src
 ```
+In case of a permission error, you will have to install conda and the requirements as explained in the Portable section.
 ### Google Collab
 
 To run easily on Google Collab, copy `Epitope_project_template.ipynb` to your collab notebook
