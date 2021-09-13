@@ -67,7 +67,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
         logger.info('Using device: %s\n', device)
 
     model, optimizer, loss_fn = init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr,
-                                           numeric_features, weighted_loss, deterministic, embed_size=embed_size)
+                                           embed_size, numeric_features, weighted_loss, deterministic)
     loss_fn.to(device)
     if window_size == 0:
         window_size = -1

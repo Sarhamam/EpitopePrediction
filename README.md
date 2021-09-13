@@ -16,6 +16,8 @@ conda activate /home/iscb/wolfson/bio3d_ws_2021b/sarhamam/venv/envs
 # Add the source directory to your PYTHONPATH
 PYTHONPATH=/home/iscb/wolfson/bio3d_ws_2021b/sarhamam/project/src:$PYTHONPATH
 ```
+### Google Collab
+
 
 ### Outside of TAU Nova Server
 
