@@ -6,3 +6,4 @@ scipy
 boltons
 biopython
 torchtext
+matplotlib

@@ -82,6 +82,7 @@ class EpitopePredictor(nn.Module):
 
 def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_layers, lr, numeric_features=True,
                weighted_loss=False, deterministic=False):
+    """ Initializes the model with the params given by the user"""
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.manual_seed(1)
@@ -94,7 +95,7 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
                              bidirectional=bidirectional,
                              concat_after=concat_after,
                              rnn_type=rnn_type,
-                             dropout=DROPOUT).to(device)
+                             dropout=DROPOUT)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     if weighted_loss:
         w = torch.as_tensor([1.0, 13.0])  # weight for 0, weight for 1
@@ -106,6 +107,9 @@ def init_model(device, rnn_type, bidirectional, concat_after, hidden_dim, n_laye
 
 def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, epochs, batch_size, window_size,
                 window_overlap, loss_at_end, max_batches, max_length, accuracy_report, deterministic=False):
+    """
+    Trains the model
+    """
     # Create train dataloader
     dataloader = DataLoader(train_dataset,
                             batch_size=batch_size,
@@ -122,6 +126,7 @@ def train_model(device, model, optimizer, loss_fn, train_dataset, test_dataset, 
 
 
 def predict(model, dataset):
+    """ Use trained model to predict results"""
     dataloader = DataLoader(dataset,
                             batch_size=1,
                             shuffle=False,

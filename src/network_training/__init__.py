@@ -23,6 +23,7 @@ MAX_LENGTH = config["NETWORK"].getint("MAX_LENGTH")
 
 def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, window_size, window_overlap, loss_at_end,
           accuracy_report, max_epochs=100, max_batches=200, max_length=10000, deterministic=False):
+    """ Trains the model over the dataset, also, saves accuracy reports"""
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.manual_seed(1)
@@ -37,10 +38,11 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
     avg_test_acc = []
 
     start_time = time.time()
-    csvfile = open(accuracy_report, 'w', newline='')
+    csvfile = open(accuracy_report, 'w', newline='')  # Create an accuracy report
     csvwriter = csv.writer(csvfile, delimiter=' ')
     csvwriter.writerow(["Epoch #", "Train loss", "Train accuracy", "Train recall", "Train precision", "Epoch time",
-                        "Total time", "Test loss", "Test accuracy", "Test recall", "Test precision"])
+                        "Total time", "Test loss", "Test accuracy", "Test recall",
+                        "Test precision"])  # Accuracy report headers
     for epoch_idx in range(max_epochs):
         logger.info("Running epoch %s out of %s", epoch_idx + 1, max_epochs)
         train_loss, train_acc, train_recall, train_precision = 0, 0, 0, 0
@@ -51,10 +53,13 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
             y = y.type(torch.FloatTensor).to(device)
 
             og_size = [min(og_size[i], max_length) for i in range(len(og_size))]
-            if (window_size == -1):
+            # Handle edge case with window size < 0 (Run without window)
+            if (window_size < 0):
                 window_size = max_length
                 window_overlap = 0
 
+            # This flow slices the input to windows, and feed them to the RNN.
+            # Calculates the loss function at the end of the batch
             if loss_at_end == True:
                 y_expected, y_pred = run_model_by_slice(device, model, X, p, y, og_size, window_size, window_overlap,
                                                         not (loss_fn.weight is None))
@@ -74,10 +79,7 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
                 train_recall += recall
                 train_precision += precision
 
-                # print(y_pred[y_expected == 1, 0])
-                # print("min:", min(y_pred[y_expected == 0, 0]))
-                # print("max:", max(y_pred[y_expected == 0, 0]))
-
+            # This flow slices the input to windows like before, but calculates the loss function each window.
             else:
                 win_shift = window_size - window_overlap
                 n_shifts = int(np.ceil(1.0 * (max(og_size) - window_size) / win_shift))  # need to check
@@ -121,6 +123,7 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
             j += 1
 
             if batch_idx == max_batches - 1:
+                # Break if training is too long !
                 break
 
         # avg batch metrics after each epoch (j total batches):
@@ -139,18 +142,19 @@ def train(device, model, optimizer, loss_fn, train_dataloader, test_dataset, win
         test_loss, test_acc, test_recall, test_precision = test(device, model, loss_fn, test_dataset)
         avg_test_loss.append(test_loss)
         avg_test_acc.append(test_acc)
+
         # Save each epoch's weights, accuracy loss and precision
         if not os.path.exists("train_results"):
             os.mkdir("train_results")
+
         torch.save(model.state_dict(), f"./train_results/model_{epoch_idx + 1}")
         torch.save(optimizer.state_dict(), f"./train_results/optimizer_{epoch_idx + 1}")
         csvwriter.writerow(
-            [epoch_idx+1, train_loss / j, train_acc.item() / j, train_recall / j, train_precision / j, epoch_time,
+            [epoch_idx + 1, train_loss / j, train_acc.item() / j, train_recall / j, train_precision / j, epoch_time,
              total_time, test_loss, test_acc.item(), test_recall, test_precision])
-        logger.info(
-            f"\t  test loss = {test_loss:.3f}, test accuracy = {test_acc:.3f}, test_time={time.time() - test_start_time:.1f} sec")
 
-    np.savetxt("total_loss.csv", np.asarray(avg_train_loss), delimiter=",")
+        logger.info(f"\t  test loss = {test_loss:.3f},"
+                    f" test accuracy = {test_acc:.3f}, test_time={time.time() - test_start_time:.1f} sec")
 
     return avg_train_loss, avg_train_acc, avg_test_loss, avg_test_acc
 
@@ -201,6 +205,7 @@ def test(device, model, loss_fn, dataset):
 #####################
 
 def run_model_by_slice(device, model, X, p, y, og_size, win_size, win_overlap, weighted_loss):
+    """ Given an input X slices it to windows before feeding to the RNN"""
     win_shift = win_size - win_overlap
     y_pred = torch.empty(0, device=device)
     y_expected = torch.empty(0, device=device)

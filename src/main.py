@@ -8,7 +8,7 @@ from shutil import copyfile
 
 from data_enricher import data_enricher
 from network import init_model, train_model, predict
-from utils.network_utils import get_device, create_dataset, print_results
+from utils.network_utils import get_device, create_dataset, print_results, plot_results
 
 logger = logging.getLogger("EpitopePrediction")
 
@@ -22,18 +22,18 @@ logger = logging.getLogger("EpitopePrediction")
               default="./resources/weights.pytw")
 @click.option('--rnn_type', type=click.Choice(['LSTM', 'GRU']), help="Type of network to run", default='GRU')
 @click.option('--bidirectional', type=bool, help="Bidirectional RNN", default=True)
-@click.option('--batch_size', type=int, help="Batch size", default=10)
+@click.option('--batch_size', type=int, help="Batch size", default=15)
 @click.option('--embed_size', type=int, help="Embedding size", default=30)
 @click.option('--concat_after', type=bool, help="Concat numerical properties with RNN output", default=False)
-@click.option('--window_size', type=int, help="Window size", default=0)
+@click.option('--window_size', type=int, help="Window size", default=-1)
 @click.option('--window_overlap', type=int, help="Window overlap", default=0)
 @click.option('--loss_at_end', type=bool, help="Calculates loss after batch (instead of after window)", default=False)
-@click.option('--epochs', type=int, help="Number of epochs to train", default=15)
+@click.option('--epochs', type=int, help="Number of epochs to train", default=24)
 @click.option('--max_batches', type=int, help="Number of maximum batches (-1 is unlimited)", default=-1)
 @click.option('--max_length', type=int, help="Max truncated sequences length", default=10000)
-@click.option('--hidden_dim', type=int, help="RNN hidden dimensions", default=128)
+@click.option('--hidden_dim', type=int, help="RNN hidden dimensions", default=256)
 @click.option('--n_layers', type=int, help="RNN number of layers", default=2)
-@click.option('--lr', type=click.FloatRange(1e-6, 1e-1, clamp=True), help="Learning rate", default=5e-4)
+@click.option('--lr', type=click.FloatRange(1e-6, 1e-1, clamp=True), help="Learning rate", default=3.3e-5)
 @click.option('--numeric_features', type=bool, help="Include numeric features", default=True)
 @click.option('--dont_print', is_flag=True, help="Dont print results to stdout")
 @click.option('--accuracy_report', type=click.Path(exists=False),
@@ -44,6 +44,7 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
              window_overlap, loss_at_end, epochs, max_batches, max_length, hidden_dim, n_layers, lr, numeric_features,
              dont_print, accuracy_report,weighted_loss,deterministic):
     try:
+        parsed_data = None
         _, file_type = os.path.splitext(input_file)
         if file_type == '.fasta':
             parsed_data = data_enricher(input_file)
@@ -83,9 +84,10 @@ def cli_main(input_file, output_file, mode, weights, rnn_type, bidirectional, ba
                                                                  max_batches, max_length, accuracy_report, deterministic)
         logger.info("Training complete. Average training loss is %s", train_loss[-1])
         logger.info("Saving weights to %s", output_file)
+        model.to('cpu')
         torch.save(model.state_dict(), output_file)
     else:  # Predict mode
-        model.load_state_dict(torch.load(weights))
+        model.load_state_dict(torch.load(weights, map_location=torch.device(device)))
         model.to(device)
         model.eval()
         test_data = create_dataset("./in.parsed", predict=True)

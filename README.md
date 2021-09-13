@@ -41,6 +41,7 @@ Options:
   --rnn_type [LSTM|GRU]       Type of network to run
   --bidirectional BOOLEAN     Bidirectional RNN
   --batch_size INTEGER        Batch size
+  --embed_size INTEGER        Embedding size
   --concat_after BOOLEAN      Concat numerical properties with RNN output
   --window_size INTEGER       Window size
   --window_overlap INTEGER    Window overlap
@@ -56,10 +57,20 @@ Options:
   --dont_print                Dont print results to stdout
   --accuracy_report PATH      CSV report containing loss and accuracy per
                               epoch
+  --weighted_loss BOOLEAN     Use weighted loss function instead of BCE
+  --deterministic BOOLEAN     Deterministic with no shuffle of training data
+                              set (for debugging)
   --help                      Show this message and exit.
 ```
 
 Note that changing any of the optionals will require you to train and predict the network with the same flags.
+#### Additional output
+When running the network on predict mode, additional output file of a graph of the probabilities will be created for each sequence in the fasta file.
+
+The file name will be `<sequence_id>.png`.
+
+When running the network on training mode, a folder called `train_results` will be created, and will contain the states of the model and optimizer for each epoch. (`optimizer_{epoch_index}, model_{epoch_index}`), This allows choosing the best epoch in the training process.
+In addition, a file named `report.csv` will contain the accuracy, loss, precision and recall of the test and train data for each epoch. (Unless `--accuracy-report` parameter given with a different path.)
 
 #### Examples
 
@@ -80,4 +91,4 @@ python src/main.py resources/example.fasta output.json predict --weights resourc
 
 ## Logs
 
-Runtime logs are located at `$PROJECT_FOLDER/logs/` and are printed to stdout.
+Runtime logs are located at `$PROJECT_FOLDER/logs/` and are printed to stdout and saved to `./logs/epitope_prediction.log`.
