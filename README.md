@@ -8,7 +8,7 @@ EpitopePrediction is a python module that uses LSTM to predict epitopes in linea
 
 ```bash
 # Go to the submission directory
-cd /home/iscb/wolfson/bio3d_ws_2021b/sarhamam/
+cd /home/iscb/wolfson/bio3d_ws_2021b/sarhamam/project
 # Alias conda (If you dont have it installed in your account already!
 source /home/iscb/wolfson/bio3d_ws_2021b/sarhamam/venv/etc/profile.d/conda.csh
 # Activate the conda environment with the requirements installed, or create your own.
